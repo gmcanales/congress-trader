@@ -613,8 +613,86 @@ config beauty contest.
 <li><b>Train negative everywhere.</b> Even at the "best" hold, the
     2021-2024 in-sample excess is −27% (RSP) to −42% (SPY). The
     impressive OOS at 63d is best-among-bad-train-records, not a stable
-    relationship. Strongly suggestive that 2025's mega-cap rally is
-    doing the heavy lifting, not the leadership filter.</li>
+    relationship.</li>
+</ul>
+
+<h3 id="trifecta-shift">The train and OOS samples aren't measuring the same thing</h3>
+<p class="callout crit">
+The most parsimonious explanation for the train/test sign flip is not
+that leaders' alpha "turned on" in 2025. It is that the trifecta change
+on 2025-01-03 produced a near-disjoint cohort change. Train and OOS
+samples are dominated by <em>different members</em> trading under
+<em>different majority regimes</em>. The leadership filter mechanically
+captures whichever party currently holds chairs.
+</p>
+<table>
+<thead><tr><th>Window</th><th class='num'>buys</th>
+<th>composition</th><th>top traders</th></tr></thead><tbody>
+<tr><td><b>Train 2021-2024</b><br>(117th D-D, 118th R-D)</td>
+<td class='num'>460</td>
+<td>Mixed: 426 in-majority across both parties (D when D controlled,
+    R when R controlled). 32 out-of-majority. 15 distinct members.</td>
+<td>Carper (D, Senate EPW Chair through Jan 2025) dominates with
+    hundreds of trades.</td></tr>
+<tr><td><b>OOS 2025</b><br>(118th R-D tail, 119th R-R)</td>
+<td class='num'>186</td>
+<td>Effectively single-cohort:
+    <b>100% Republican members</b>;
+    <b>98% in-majority</b>;
+    <b>92% (172/186) of trades sit in the 119th Congress</b>
+    (R trifecta).</td>
+<td>Boozman (new Senate Ag Chair under R) alone =
+    <b>100 of 186 trades</b>. McClain (30), Foxx (15), Capito (14),
+    Comer (10). 11 distinct members.</td></tr>
+</tbody></table>
+<p>
+Concretely: the train sample asked "do trades by Democratic Senate
+chairs (Carper et al., Whitehouse, Wyden) and Republican House chairs
+(Foxx, McClain) outperform during 2021-2024 markets?" — and the answer
+was a resounding no (excess −27% to −42%). The OOS sample asks "do
+trades by newly-installed Republican Senate chairs (Boozman, Moran,
+Graham, …) plus continuing House Republicans outperform during the
+first year of a Trump trifecta?" — and the answer was yes (excess
++8% to +15%).
+</p>
+<p>
+Those are not the same question. The leadership filter, applied
+across a control change, is structurally measuring a regime
+transition: the train cohort is composed mostly of people who
+benefited (in role terms) from a D-leaning Congress; the test
+cohort is composed mostly of people who benefited from an R
+trifecta. The OOS excess is the joint result of (a) which sectors
+rallied in 2025 — mega-cap tech, energy, defense, banks
+— and (b) what the newly-installed R chairs happened to be
+holding or buying. Calling that "leadership alpha" credits the
+filter with what is really a political-control + market-regime
+intersection.
+</p>
+<p>
+This doesn't disprove a Wei &amp; Zhou-style signal. Their
+identification works precisely because they have 26 years and use
+within-member pre/post-ascension differencing — they ask "did
+member X's trading change when X became a leader, controlling
+for X's baseline?" We can't ask that question cleanly with 4 years
+and a regime change cleanly aligned to our train/test boundary.
+What our data <em>can</em> say:
+</p>
+<ul class="tight">
+<li>Per-trade event study t-stats are stable and modest (5d
+    significantly negative at −2.65; 63d borderline positive at +1.94
+    vs RSP). These are robust to the composition change because they
+    average across all trades equally.</li>
+<li>The rules-backtest aggregate result is dominated by who happens to
+    be in the universe at any moment and what their portfolios look
+    like. With 11 members on the test side, that's not a strategy
+    measurement, it's a cohort measurement.</li>
+<li>The cleanest next move to disentangle this would be to either
+    (a) extend the panel back to ~2013 (when PTR disclosures begin)
+    to span multiple control changes within the training window, or
+    (b) test the hypothesis on a separate population that turns over
+    on a different calendar (federal judges, who have lifetime
+    appointments and are not subject to the 2025 trifecta cohort
+    change).</li>
 </ul>
 
 {_assumptions_section()}
