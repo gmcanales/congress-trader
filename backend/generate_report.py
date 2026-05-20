@@ -496,42 +496,67 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
       here. See "next steps".</li>
 </ul>
 
-<h2 id="leadership-prelim">Preliminary leadership-only result — interpret with extreme caution</h2>
-<p class="callout crit">
-Runs <b>#9 / #10</b> apply the v2 leadership filter (trades made while
-the member held a Speaker / Majority Leader / Minority Leader / Whip /
-Conference Chair / Policy Committee Chair position) to the same
-pinned grid (<code>filing_date</code>, hold=63, min=1). Aggregate OOS
-excess looks dramatic: <b>+38.11% vs SPY, +41.02% vs RSP</b>. <b>It
-is almost certainly noise.</b>
+<h2 id="leadership-prelim">Leadership-only result — narrow vs expanded universe</h2>
+<p class="callout warn">
+Runs <b>#9 / #10</b> applied the leadership filter to only the narrow
+chamber-leadership universe (Speaker, Majority/Minority Leader, Whips,
+Conference Chairs) — 37 position tenures, 67 train trades, dominated
+by five members. Runs <b>#11 / #12</b> repeat the same backtest after
+ingesting committee chairs and ranking members of the 117th–119th
+Congresses (157 position tenures, 460 train trades, much more
+distributed). The widening matters — the apparent OOS edge shrinks
+substantially.
 </p>
+<table>
+<thead><tr><th>universe</th><th class='num'>OOS positions</th>
+<th class='num'>OOS excess vs SPY</th><th class='num'>OOS excess vs RSP</th>
+<th class='num'>train/test sign-flip</th><th class='num'>per-trade 5d t-stat (SPY)</th>
+<th class='num'>per-trade 63d t-stat (RSP)</th></tr></thead><tbody>
+<tr><td>Narrow leadership (#9/#10)</td><td class='num'>45</td>
+<td class='num'>+38.11%</td><td class='num'>+41.02%</td>
+<td class='num'>−61.76 → +38.11 (≈ 100 pts)</td>
+<td class='num'>−2.65</td><td class='num'>−0.06</td></tr>
+<tr><td>+ chairs / ranking (#11/#12)</td><td class='num'>186</td>
+<td class='num'>+11.93%</td><td class='num'>+14.85%</td>
+<td class='num'>−42.10 → +11.93 (≈ 54 pts)</td>
+<td class='num'>−2.65</td><td class='num'>+1.94</td></tr>
+</tbody></table>
 <ul class="tight">
-<li><b>Train/test sign flip:</b> in-sample (2021-2024) excess was
-    <b>−61.76%</b>; OOS (2025) jumped to <b>+38.11%</b>. A 100-point
-    swing between adjacent windows is the textbook signature of small-sample
-    variance, not a stable signal.</li>
-<li><b>Per-trade event study disagrees:</b> at the 5-day horizon the
-    leadership buys post a mean excess return of <b>−4.03%</b> with a
-    t-stat of <b>−2.65</b> — i.e., statistically significant
-    underperformance for individual trades. The 21d and 63d horizons
-    are zero-to-negative. The aggregate gain is portfolio-composition
-    behaviour (equal-weight rotation through a handful of names that
-    happened to rally in 2025), not a stock-picking signal.</li>
-<li><b>Sample is tiny and concentrated:</b> 67 train + 45 OOS positions,
-    dominated by five members (Capito 135 trades, McClain 61, Clark 48,
-    Pelosi 30, McConnell 16 in our underlying data). We are effectively
-    measuring those five individuals' 2025 luck.</li>
-<li><b>Committee chairs are not yet in this dataset.</b> Step 3 of the
-    v2 plan (Congress.gov bulk committee XML) is the genuine widening
-    of the universe. Until that lands the leadership-only number should
-    be treated as a sanity check, not a result.</li>
+<li><b>The narrow-universe edge mostly dissolves when chairs are added.</b>
+    Going from 67 → 460 train positions cuts the OOS SPY excess from
+    +38% to +12% and the RSP excess from +41% to +15%. The narrow
+    result was indeed driven by the five-member concentration; with
+    more leaders in the mix, the average drifts back toward broad-market
+    behaviour.</li>
+<li><b>Train/test instability persists but is smaller.</b> A 54-point
+    sign flip is still well outside what a stable signal would produce,
+    but it's noticeably tighter than the 100-pt swing on the narrow
+    universe — consistent with reduced single-trader luck, not the
+    appearance of a robust alpha.</li>
+<li><b>5-day horizon: leadership buys significantly underperform.</b>
+    t-stat = <b>−2.65</b> vs SPY is unchanged from the narrow universe.
+    This is consistent across both samples and is the most statistically
+    significant finding so far. It points against any "follow the
+    leader" alpha at short horizons.</li>
+<li><b>63-day horizon: borderline positive vs RSP.</b> t-stat = +1.94
+    against RSP, right at the 1.96 / 95% threshold (and +1.41 against
+    SPY). Suggestive, but not at the level we'd want before
+    attributing it to a real signal. Could go either way in another
+    year of data.</li>
+<li><b>Sample is no longer 5-member-bound</b> but is still concentrated:
+    top traders in the expanded set are Carper (493 trades),
+    Boozman (188), Capito (135), Foxx (80), Whitehouse (79),
+    Burgess (74).</li>
 </ul>
 <p>
-Bottom line: this run does <em>not</em> reproduce a Wei &amp; Zhou-style
-leadership alpha. Wei &amp; Zhou use 26 years of data with within-member
-pre/post-ascension identification on 20 leaders; we have 4 years with
-67 leader-window trades, no within-member panel, and a per-trade signal
-that points <em>against</em> the aggregate result.
+Honest read: the expanded universe converts the runs #9/#10
+"obvious overfit" into a more nuanced "small-sample edge with
+the wrong sign at short horizons and a borderline positive at
+3-month horizons." Not strong enough to actionably ride; not
+weak enough to confidently dismiss. The cleanest next step is
+to add a separate political-figure universe (cabinet OGE 278-T)
+that lets us test the hypothesis on a non-overlapping population
+rather than re-cutting the same congressional data.
 </p>
 
 {_assumptions_section()}
