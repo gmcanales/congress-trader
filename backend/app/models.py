@@ -128,3 +128,68 @@ class PriceBar(Base):
     __table_args__ = (
         UniqueConstraint("ticker", "date", name="uq_price_bar"),
     )
+
+
+# ── v2 leadership tables ────────────────────────────────────────────────────
+
+class Committee(Base):
+    """Congressional committees, sub-committees, and joint committees.
+
+    Sourced from unitedstates/congress-legislators (committees-current.yaml,
+    committees-historical.yaml). The `thomas_id` is the canonical short
+    code used across Congress.gov / GovTrack / ProPublica.
+    """
+    __tablename__ = "committees"
+
+    id = Column(Integer, primary_key=True)
+    thomas_id = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
+    chamber = Column(String)  # house | senate | joint
+    committee_type = Column(String)  # standing | select | joint | special | subcommittee
+    parent_committee_id = Column(Integer, ForeignKey("committees.id"))
+    jurisdiction = Column(String)
+
+
+class Position(Base):
+    """Time-bounded leadership / committee tenure for a member.
+
+    One row per (member, role, term). For chamber-leadership rows
+    (Speaker, Majority/Minority Leader, Whips, etc.) `committee_id` is
+    NULL. For committee chair / ranking-member rows `committee_id` is
+    populated. `role_type` partitions the universe so analysis tools can
+    filter by class.
+    """
+    __tablename__ = "positions"
+
+    id = Column(Integer, primary_key=True)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=False, index=True)
+    role_type = Column(String, nullable=False, index=True)
+    # leadership | chair | ranking | committee_member
+    title = Column(String, nullable=False)
+    committee_id = Column(Integer, ForeignKey("committees.id"), index=True)
+    congress = Column(Integer, index=True)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, index=True)  # NULL = currently held
+    source = Column(String)  # e.g. "unitedstates/congress-legislators@<sha>"
+
+
+class PartyControl(Base):
+    """Which party held the majority of a chamber over a given period.
+
+    Used to compute the `party_in_majority` flag on
+    v_stock_transactions_leadership, since the Wei & Zhou mechanism
+    (political-influence channel) requires the leader's party to control
+    the chamber.
+    """
+    __tablename__ = "party_control"
+
+    id = Column(Integer, primary_key=True)
+    chamber = Column(String, nullable=False)  # house | senate
+    congress = Column(Integer, nullable=False)
+    majority_party = Column(String, nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date)
+
+    __table_args__ = (
+        UniqueConstraint("chamber", "congress", name="uq_party_control_congress"),
+    )

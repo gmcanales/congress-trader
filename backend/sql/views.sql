@@ -64,3 +64,43 @@ SELECT
 FROM transactions t
 WHERE t.ticker IS NOT NULL AND t.ticker <> ''
 GROUP BY t.ticker;
+
+-- v2 leadership analysis surface: every analyzable trade tagged with whether
+-- the member held a leadership / committee-chair / ranking-member position on
+-- the transaction date, and whether their party controlled the chamber.
+--
+-- This is what the v2 backtest should consume when restricting to the
+-- "captain gains" subset per Wei & Zhou (NBER, 2025). One row per
+-- transaction; the EXISTS / scalar-subquery pattern avoids row multiplication
+-- when a member holds multiple positions at the same time (e.g. Speaker +
+-- committee chair).
+CREATE OR REPLACE VIEW v_stock_transactions_leadership AS
+SELECT
+    vst.*,
+    EXISTS (
+        SELECT 1 FROM positions p
+        WHERE p.member_id = vst.member_id
+          AND p.role_type IN ('leadership', 'chair')
+          AND vst.transaction_date BETWEEN p.start_date AND COALESCE(p.end_date, CURRENT_DATE)
+    ) AS in_leadership_window,
+    (
+        SELECT string_agg(p.title, ' | ' ORDER BY p.start_date)
+        FROM positions p
+        WHERE p.member_id = vst.member_id
+          AND vst.transaction_date BETWEEN p.start_date AND COALESCE(p.end_date, CURRENT_DATE)
+    ) AS positions_held,
+    (
+        SELECT pc.majority_party
+        FROM party_control pc
+        WHERE pc.chamber = vst.chamber
+          AND vst.transaction_date BETWEEN pc.start_date AND COALESCE(pc.end_date, CURRENT_DATE)
+        LIMIT 1
+    ) AS chamber_majority_party,
+    (
+        SELECT vst.party = pc.majority_party
+        FROM party_control pc
+        WHERE pc.chamber = vst.chamber
+          AND vst.transaction_date BETWEEN pc.start_date AND COALESCE(pc.end_date, CURRENT_DATE)
+        LIMIT 1
+    ) AS party_in_majority
+FROM v_stock_transactions vst;

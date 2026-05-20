@@ -7,3 +7,8 @@
 -- unitedstates/congress-legislators (and ProPublica/GovTrack).
 ALTER TABLE members ADD COLUMN IF NOT EXISTS bioguide_id VARCHAR;
 CREATE INDEX IF NOT EXISTS ix_members_bioguide_id ON members(bioguide_id);
+
+-- Tables `committees`, `positions`, and `party_control` (v2 leadership work)
+-- are declared on the SQLAlchemy models and created via Base.metadata.create_all
+-- at backend startup. No ALTER statements are needed here unless we later add
+-- columns to those tables on existing deployments.

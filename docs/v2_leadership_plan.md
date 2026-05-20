@@ -1,7 +1,10 @@
 # Congress Trader — v2 Leadership Plan
 
-**Status:** draft scope, 2026-05-20
-**Supersedes:** none (extends [v1 modeling plan](../CLAUDE.md))
+**Status (2026-05-20):** step 1 done (bioguide_id backfilled), step 2 in
+progress (committees/positions/party_control ingestion).
+**Extends:** [v1 modeling plan](../CLAUDE.md) — v1 confirmed null on the
+tradeable (filing_date) anchor; v2 narrows the universe to the
+theory-driven leadership subset.
 **Triggered by:** Wei & Zhou, *"Captain Gains" on Capitol Hill*, NBER WP, November 2025
 
 ---
@@ -109,14 +112,14 @@ populated; that's step 4 in the sequence below.
 
 ## 3. Sequencing
 
-| # | Step | Deliverable |
-|---|---|---|
-| 1 | Add `bioguide_id` to `members` + backfill | Column populated for >95% of existing members; unmatched cases reported for manual resolution |
-| 2 | Ingest `unitedstates/congress-legislators` | `committees` + `positions` tables populated for 2021–2025 House + Senate |
-| 3 | Fill historical-chair gap from Congress.gov bulk data | All 2021–2025 committee chairs and ranking members in `positions` |
-| 4 | Build `v_stock_transactions_leadership` + coverage report | Measured count + distribution of trades in leadership windows |
-| 5 | Re-run backtest with leadership filter + Wei & Zhou stratifications | New `AnalysisRun` rows for: leadership-only event study, party-controls-chamber subset, regulatory-action-sales subset (if feasible), government-contract-recipients subset (if feasible) |
-| 6 | Decide on v2.5 generalization | Based on v2 result, decide whether to refactor `members` → `filers` to host judges + cabinet |
+| # | Step | Status | Deliverable |
+|---|---|---|---|
+| 1 | Add `bioguide_id` to `members` + backfill | ✅ done | 311/313 matched (`backend/backfill_bioguide.py`); 2 unmatched are parser garbage |
+| 2 | Ingest `unitedstates/congress-legislators` | 🟡 in progress | `committees` + `positions` + `party_control` populated for 2021–2025 via `backend/ingest_leadership.py` |
+| 3 | Fill historical-chair gap from Congress.gov bulk data | pending | All 2021–2025 committee chairs and ranking members in `positions` |
+| 4 | Build `v_stock_transactions_leadership` + coverage report | pending | Measured count + distribution of trades in leadership windows |
+| 5 | Re-run backtest with leadership filter + Wei & Zhou stratifications | pending | New `AnalysisRun` rows on **filing_date** (the actionable anchor): leadership-only event study, party-controls-chamber subset, etc. |
+| 6 | Decide on v2.5 generalization | pending | Based on v2 result, decide whether to refactor `members` → `filers` to host judges + cabinet |
 
 ## 4. Risks and caveats
 

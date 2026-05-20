@@ -43,47 +43,112 @@ clean bulk transaction feed. Ingestion (Admin panel → `POST /api/scrape/`):
   agreement/CSRF flow and parses the electronic PTR HTML tables.
 
 Every transaction carries `confidence` (high/medium/low) and `filing_date`
-(the public date — **use this for any backtest**, not `transaction_date`).
+(the public date — **use this for any actionable backtest**, never
+`transaction_date`; see "Anchor choice" below).
 
 ## Model / analysis
 
 - `services/backtest.py` — the parameterized engine: event study + grid-searched
-  rules backtest + train/test orchestration. All knobs are arguments.
+  rules backtest + train/test orchestration. `benchmark` is a parameter
+  (SPY cap-weighted, RSP equal-weighted, …).
 - `analyze.py` — CLI wrapper: `docker compose exec backend python analyze.py --help`
 - API: `POST /api/model/run` (background), `GET /api/model/runs`, `/runs/{id}`.
-- **v1 outcome: no edge found.** Following disclosures does not beat SPY; the
-  signal is absent even on `transaction_date`. Details in the memory files.
+- `generate_report.py` — parameterized HTML report generator. Pulls runs by
+  id, emits `reports/report_runs<ids>_<YYYY-MM-DD>.html` with embedded
+  Plotly charts via CDN.
+
+### v1 outcome — confirmed null
+
+Eight runs landed at the same conclusion: **no actionable edge in broad
+congressional trading.** The cleanest cut (runs #7/#8 — pinned grid
+`hold=63, min_members=1`, anchored on `filing_date`) shows OOS strategy
+returns of +15.08% vs SPY +17.90% (excess −2.82%) and RSP +14.99%
+(excess +0.09%, i.e. flat against equal-weight).
+
+The mirror runs on `transaction_date` (#5/#6) appeared to show +2.53% / +5.44%
+excess but that's pure look-ahead: the 5-point gap is the disclosure-lag
+premium (congressional buys drift up during the ≤45-day reporting window).
+A follower can only act at disclosure — by which point the move is gone.
+Full diagnosis in the latest `reports/report_runs*_*.html` file.
+
+### Anchor choice
+
+The engine accepts either `date_field`:
+
+- `filing_date` — **tradeable.** The public observation date. Any claim of
+  "edge" must use this anchor.
+- `transaction_date` — **diagnostic only.** The actual trade date is not
+  publicly observable until the disclosure files (up to 45 days later);
+  using it builds in look-ahead bias.
 
 **Principle:** all analysis must run through parameterized, traceable tools —
-never one-off scripts. Datasets + analysis_runs tables exist for traceability.
+never one-off scripts. `datasets` + `analysis_runs` tables exist for
+traceability. `generate_report.py` consumes those rows.
 
 ## Database schema
 
-Tables: `members`, `disclosures`, `transactions`, `price_bars`, `datasets`
-(named analysis snapshots), `analysis_runs` (params + scores + full results).
+Core tables: `members`, `disclosures`, `transactions`, `price_bars`,
+`datasets` (named analysis snapshots), `analysis_runs` (params + scores +
+full results).
 
-Views (`backend/sql/views.sql`, auto-applied on startup): `v_stock_transactions`
-(canonical analyzable trades), `v_member_activity`, `v_ticker_activity`.
+v2-prep tables (see "v2 leadership work" below): `committees`, `positions`,
+`party_control`. `members.bioguide_id` is the canonical join key with
+external congressional datasets.
+
+Schema migrations are applied at backend startup from
+`backend/sql/migrations.sql` (idempotent ALTER / CREATE statements — no
+alembic). Views from `backend/sql/views.sql` are applied next:
+`v_stock_transactions` (canonical analyzable trades), `v_member_activity`,
+`v_ticker_activity`, and `v_stock_transactions_leadership` (transactions
+tagged with the position the member held on the transaction date, plus
+party-controls-chamber flag).
+
+## v2 leadership work
+
+Motivated by Wei & Zhou (NBER, 2025): rank-and-file congressional trades
+have no edge (matches our v1) but ~47pp/yr alpha for the 20 lawmakers who
+ascended into leadership. Scope and sequencing live in
+`docs/v2_leadership_plan.md`.
+
+Status:
+- **Step 1 done** — `members.bioguide_id` backfilled (311 / 313 matched
+  via `backend/backfill_bioguide.py`).
+- **Step 2 in progress** — committees / positions / party_control
+  ingestion from `unitedstates/congress-legislators`
+  (`backend/ingest_leadership.py`).
+- Step 3 → re-run the backtest restricted to trades made *during* a
+  leadership / chair tenure, on `filing_date`, with both SPY and RSP.
 
 ## Key files
 
 ```
-backend/app/main.py            FastAPI app, router wiring, view application
+backend/app/main.py            FastAPI app, router wiring, migrations + views applier
 backend/app/models.py          SQLAlchemy models
 backend/app/routers/           members, transactions, prices, scraper, model, datasets
 backend/app/services/          scraper, senate_scraper, ptr_parser, ocr, price_service, backtest
-backend/sql/views.sql          analysis views
-backend/analyze.py             backtest CLI
+backend/sql/migrations.sql     idempotent schema migrations (applied on startup)
+backend/sql/views.sql          analysis views (applied on startup)
+backend/analyze.py             backtest CLI (parameterized: anchor, benchmark, grid)
+backend/generate_report.py     parameterized HTML report generator
+backend/backfill_bioguide.py   one-shot: backfill bioguide_id from congress-legislators
+backend/ingest_leadership.py   one-shot: ingest committees/positions/party_control
 frontend/js/{app,chart,analysis,api}.js
+docs/v2_leadership_plan.md     v2 scope, schema, data sources
+reports/                       generated HTML reports (report_runs<ids>_<date>.html)
 docker-compose.yml  .env
 ```
 
 ## Current state
 
-- Data: 2021–2025 House + Senate (~12k transactions) ingested and migrated to
-  the NUC. Local `db` container holds a backup copy.
-- v1 model complete (negative result). No further modeling in progress.
-- Known gap: ~12% scanned/checkbox-grid filings parse poorly (deferred).
+- Data: 2021–2025 House + Senate (~12k transactions) ingested on the NUC.
+  Local `db` container holds a backup copy.
+- v1 backtest complete — null on the actionable anchor. Eight runs
+  catalogued in `analysis_runs`; current canonical report is
+  `reports/report_runs1-2-3-4-5-6-7-8_2026-05-20.html`.
+- v2 leadership prep underway (bioguide backfilled, positions ingest
+  next). No new modeling has been run against the leadership subset yet.
+- Known data gap: ~12% scanned/checkbox-grid filings parse poorly
+  (deferred).
 
-Project context and decisions are also tracked in Claude's memory files under
-`~/.claude/projects/.../memory/` — read `MEMORY.md` there first.
+Project context and decisions are also tracked in Claude's memory files
+under `~/.claude/projects/.../memory/` — read `MEMORY.md` there first.
