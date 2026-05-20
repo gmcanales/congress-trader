@@ -553,11 +553,69 @@ Honest read: the expanded universe converts the runs #9/#10
 "obvious overfit" into a more nuanced "small-sample edge with
 the wrong sign at short horizons and a borderline positive at
 3-month horizons." Not strong enough to actionably ride; not
-weak enough to confidently dismiss. The cleanest next step is
-to add a separate political-figure universe (cabinet OGE 278-T)
-that lets us test the hypothesis on a non-overlapping population
-rather than re-cutting the same congressional data.
+weak enough to confidently dismiss.
 </p>
+
+<h3 id="term-structure">Hold-period term structure (runs #11-#16)</h3>
+<p>
+The leadership runs above were all pinned at <code>hold=63d</code>.
+Runs <b>#13/#14</b> (hold=21d) and <b>#15/#16</b> (hold=126d) hold the
+universe and entry rule constant but vary the timer-exit. Two reasons
+not to interpret this as a grid search: (a) the per-trade event-study
+t-stats below are constant across runs because they measure
+trade-anchored forward returns independent of the hold (so the rules
+backtest is just catching different slices of the same per-trade
+curve), and (b) train excess is negative at every horizon, so picking
+the highest OOS number reintroduces the v1 overfit-by-selection trap.
+The table is a diagnostic of where the signal actually lives, not a
+config beauty contest.
+</p>
+<table>
+<thead><tr><th>hold</th>
+<th class='num'>OOS strategy</th>
+<th class='num'>OOS excess SPY</th>
+<th class='num'>OOS excess RSP</th>
+<th class='num'>train excess SPY</th>
+<th class='num'>train excess RSP</th>
+<th class='num'>per-trade 5d t (SPY)</th>
+<th class='num'>per-trade 63d t (RSP)</th>
+</tr></thead><tbody>
+<tr><td>21d (runs #13/#14)</td>
+<td class='num'>+3.84%</td>
+<td class='num'><span class='neg'>−16.51%</span></td>
+<td class='num'><span class='neg'>−12.09%</span></td>
+<td class='num'>−61.27%</td><td class='num'>−42.41%</td>
+<td class='num'>−2.65</td><td class='num'>+1.94</td></tr>
+<tr><td><b>63d (runs #11/#12)</b></td>
+<td class='num'><b>+29.84%</b></td>
+<td class='num'><b>+11.93%</b></td>
+<td class='num'><b>+14.85%</b></td>
+<td class='num'>−42.10%</td><td class='num'>−27.24%</td>
+<td class='num'>−2.65</td><td class='num'>+1.94</td></tr>
+<tr><td>126d (runs #15/#16)</td>
+<td class='num'>+27.58%</td>
+<td class='num'>−0.41%</td>
+<td class='num'>+8.24%</td>
+<td class='num'>−49.88%</td><td class='num'>−26.44%</td>
+<td class='num'>−2.65</td><td class='num'>+1.94</td></tr>
+</tbody></table>
+<ul class="tight">
+<li><b>Per-trade picture, unchanged across holds:</b> 5d significantly
+    negative, 21d null, 63d borderline-positive vs RSP. The signal, if
+    any, is at the 3-month horizon.</li>
+<li><b>Rules backtest at 21d is exactly what you'd expect</b> if you
+    locked in the negative 5-day signal — OOS excess of −16.51% vs SPY
+    matches the directional sign of the 5d per-trade test.</li>
+<li><b>63d is the sweet spot of the rules backtest</b> because it spans
+    the per-trade horizon at which forward returns turn positive.
+    Extending to 126d adds further drift but the additional 63 days are
+    noise around a position whose signal already played out.</li>
+<li><b>Train negative everywhere.</b> Even at the "best" hold, the
+    2021-2024 in-sample excess is −27% (RSP) to −42% (SPY). The
+    impressive OOS at 63d is best-among-bad-train-records, not a stable
+    relationship. Strongly suggestive that 2025's mega-cap rally is
+    doing the heavy lifting, not the leadership filter.</li>
+</ul>
 
 {_assumptions_section()}
 
