@@ -19,6 +19,9 @@ class Member(Base):
     state_dst = Column(String)  # House: "CA12" district; Senate: "CA" state
     party = Column(String)
     chamber = Column(String)  # house | senate
+    # Canonical join key with external datasets (unitedstates/congress-legislators,
+    # ProPublica, GovTrack). Populated by `backend/backfill_bioguide.py`.
+    bioguide_id = Column(String, index=True)
 
     __table_args__ = (
         UniqueConstraint("last_name", "first_name", "state_dst", name="uq_member"),

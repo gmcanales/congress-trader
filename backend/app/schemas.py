@@ -12,6 +12,7 @@ class MemberOut(BaseModel):
     state_dst: Optional[str] = None
     party: Optional[str] = None
     chamber: Optional[str] = None
+    bioguide_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

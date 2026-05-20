@@ -10,13 +10,15 @@ from app.routers import members, transactions, prices, scraper, model, datasets
 
 logging.basicConfig(level=logging.INFO)
 
-VIEWS_SQL = os.path.join(os.path.dirname(__file__), "..", "sql", "views.sql")
+SQL_DIR = os.path.join(os.path.dirname(__file__), "..", "sql")
+MIGRATIONS_SQL = os.path.join(SQL_DIR, "migrations.sql")
+VIEWS_SQL = os.path.join(SQL_DIR, "views.sql")
 
 
-def _apply_views():
-    """Apply the analysis views (idempotent CREATE OR REPLACE)."""
+def _apply_sql_file(path: str, label: str) -> None:
+    """Run a SQL file in one transaction. Every statement must be idempotent."""
     try:
-        with open(VIEWS_SQL) as f:
+        with open(path) as f:
             sql = f.read()
         raw = engine.raw_connection()
         try:
@@ -25,15 +27,16 @@ def _apply_views():
             raw.commit()
         finally:
             raw.close()
-        logging.info("Analysis views applied")
+        logging.info(f"{label} applied")
     except Exception as exc:
-        logging.warning(f"Could not apply analysis views: {exc}")
+        logging.warning(f"Could not apply {label}: {exc}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    _apply_views()
+    _apply_sql_file(MIGRATIONS_SQL, "migrations")
+    _apply_sql_file(VIEWS_SQL, "views")
     yield
 
 
