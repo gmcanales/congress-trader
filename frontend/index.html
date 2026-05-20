@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Congress Trader</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <h1>Congress Trader</h1>
+      <span class="subtitle">Congressional Stock Disclosure Explorer</span>
+    </div>
+    <div class="header-right">
+      <nav class="view-nav">
+        <button id="nav-trades" class="nav-btn active">Trades</button>
+        <button id="nav-analysis" class="nav-btn">Analysis</button>
+      </nav>
+      <button id="admin-toggle" class="btn-ghost">Admin</button>
+    </div>
+  </header>
+
+  <div id="admin-panel" class="admin-panel hidden">
+    <div class="admin-inner">
+      <h3>Data Ingestion</h3>
+      <p>Download and parse Periodic Transaction Reports from the House Clerk for a given year.</p>
+      <div class="admin-row">
+        <label>Chamber</label>
+        <select id="scrape-chamber" class="mini-select">
+          <option value="house" selected>House</option>
+          <option value="senate">Senate</option>
+        </select>
+        <label>Year</label>
+        <input type="number" id="scrape-year" value="2025" min="2012" max="2026">
+        <label>Max docs (blank = all)</label>
+        <input type="number" id="scrape-limit" placeholder="e.g. 200">
+        <button id="scrape-btn" class="btn-primary">Start Scrape</button>
+      </div>
+      <div id="scrape-status" class="scrape-status"></div>
+    </div>
+  </div>
+
+  <div class="app-layout" id="trades-view">
+    <aside class="sidebar">
+      <section class="control-section">
+        <div class="trending-head">
+          <label class="control-label">Most Traded</label>
+          <select id="trending-window" class="mini-select">
+            <option value="3">3 mo</option>
+            <option value="6" selected>6 mo</option>
+            <option value="12">12 mo</option>
+          </select>
+        </div>
+        <ul id="trending-list" class="trending-list">
+          <li class="trending-empty">Loading…</li>
+        </ul>
+      </section>
+
+      <section class="control-section">
+        <label class="control-label">Or search a ticker</label>
+        <div class="ticker-search-row">
+          <input type="text" id="ticker-input" placeholder="e.g. AAPL" autocomplete="off">
+          <button id="load-btn" class="btn-primary">Go</button>
+        </div>
+      </section>
+
+      <section class="control-section">
+        <label class="control-label">Date Range</label>
+        <input type="date" id="start-date" class="date-input">
+        <input type="date" id="end-date" class="date-input">
+      </section>
+
+      <section class="control-section">
+        <label class="control-label">Filter by Member</label>
+        <input type="text" id="member-search" placeholder="Search name..." autocomplete="off">
+        <ul id="member-list" class="member-list hidden"></ul>
+        <div id="selected-member" class="selected-member hidden">
+          <span id="selected-member-name"></span>
+          <button id="clear-member" class="btn-ghost-sm">×</button>
+        </div>
+      </section>
+
+      <section class="control-section stats-section hidden" id="stats-section">
+        <div class="stat-row">
+          <span class="stat-label">Buys</span>
+          <span id="stat-buys" class="stat-value buy-color">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Sells</span>
+          <span id="stat-sells" class="stat-value sell-color">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Members</span>
+          <span id="stat-members" class="stat-value">0</span>
+        </div>
+        <div class="stat-row stat-confidence">
+          <span class="stat-label">Parse quality</span>
+          <span id="stat-confidence" class="stat-value"></span>
+        </div>
+      </section>
+    </aside>
+
+    <main class="main-content">
+      <div id="chart-container" class="chart-container">
+        <div id="placeholder" class="chart-placeholder">
+          <div class="placeholder-icon">📈</div>
+          <div>Pick a <strong>Most Traded</strong> ticker, or search one</div>
+          <div class="placeholder-hint">
+            First run? Use Admin to scrape a year of congressional trades.
+          </div>
+        </div>
+        <div id="loading" class="loading hidden">
+          <div class="spinner"></div>
+          <span>Loading data…</span>
+        </div>
+        <div id="error-msg" class="error-msg hidden"></div>
+        <svg id="main-chart"></svg>
+        <div id="tooltip" class="tooltip hidden"></div>
+      </div>
+
+      <div id="tx-table-wrap" class="tx-table-wrap hidden">
+        <div class="tx-table-header">
+          <h3>Transactions <span id="tx-count" class="tx-count"></span></h3>
+          <input type="text" id="tx-filter" placeholder="Filter table…" class="tx-filter-input">
+        </div>
+        <div class="tx-table-scroll">
+          <table id="tx-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Member</th>
+                <th>Ticker</th>
+                <th>Type</th>
+                <th>Amount Range</th>
+                <th>Owner</th>
+                <th>Parse</th>
+              </tr>
+            </thead>
+            <tbody id="tx-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <section id="analysis-view" class="analysis-view hidden">
+    <div class="analysis-inner">
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Datasets</h3>
+          <div class="inline-form">
+            <input type="text" id="ds-name" placeholder="Dataset name">
+            <input type="text" id="ds-desc" placeholder="Description (optional)">
+            <button id="ds-snapshot-btn" class="btn-primary">Snapshot current data</button>
+          </div>
+        </div>
+        <div id="datasets-list" class="datasets-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Run Analysis</h3></div>
+        <div class="run-form">
+          <label>Dataset<select id="run-dataset"></select></label>
+          <label>Event anchor<select id="run-datefield">
+            <option value="filing_date">filing_date</option>
+            <option value="transaction_date">transaction_date</option>
+          </select></label>
+          <label>Train start<input type="date" id="run-train-start" value="2021-01-01"></label>
+          <label>Train end<input type="date" id="run-train-end" value="2024-12-31"></label>
+          <label>Test start<input type="date" id="run-test-start" value="2025-01-01"></label>
+          <label>Test end<input type="date" id="run-test-end" value="2025-12-31"></label>
+          <label>Event horizons<input type="text" id="run-horizons" value="5,21,63"></label>
+          <label>Hold days<input type="text" id="run-holddays" value="21,63"></label>
+          <label>Min members<input type="text" id="run-minmembers" value="1,2,3"></label>
+          <button id="run-analysis-btn" class="btn-primary">Run Analysis</button>
+        </div>
+        <div id="run-status" class="scrape-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Analysis Runs</h3></div>
+        <div class="tx-table-scroll">
+          <table id="runs-table">
+            <thead><tr>
+              <th>#</th><th>Created</th><th>Dataset</th><th>Anchor</th>
+              <th>Selected</th><th>Train excess</th><th>OOS excess</th>
+              <th>Overfit gap</th><th>Status</th>
+            </tr></thead>
+            <tbody id="runs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="run-detail" class="panel hidden">
+        <div class="panel-head"><h3 id="run-detail-title">Run Detail</h3></div>
+        <div id="run-detail-body"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/analysis.js"></script>
+</body>
+</html>
