@@ -387,12 +387,11 @@ def _next_steps_section() -> str:
     return """
 <h2 id="next">Open questions &amp; next steps</h2>
 <ol class="tight">
-<li><b>Equal-weight benchmark — addressed (run #4).</b> The strategy beats
-    RSP as well as SPY, so the SPY excess is not a pure equal-weight basis.
-    Caveat: the in-sample grid selection diverged between benchmarks
-    (SPY → hold=63; RSP → hold=21), so a clean apples-to-apples requires
-    forcing a fixed grid across runs — worth doing as a small follow-up
-    before drawing structural conclusions.</li>
+<li><b>Equal-weight benchmark — closed (runs #5/#6).</b> Identical strategy
+    parameters under SPY and RSP both show the strategy ahead: +2.53% over
+    SPY, +5.44% over RSP. The excess is not a mechanical equal-weight
+    basis. (Note: this confirms a portfolio-composition effect, not a
+    per-trade signal — event-study t-stats remain sub-1.)</li>
 <li><b>Signal-driven exits.</b> The hard-timer exit is an event-study
     construct, not a strategy. A realistic strategy mixes:
     <ul>
@@ -453,13 +452,18 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
       21-day exit (every position auto-closes on a timer, so quiet stretches
       leave the strategy fully cashed-out).</li>
   <li>Removing the conviction filter (run #3, <code>min_members=1</code>) eliminates
-      the freezes and yields +2.53% OOS excess vs SPY — and the equal-weight
-      cross-check (run #4, benchmark RSP) shows the strategy <em>also</em>
-      beats RSP, so the SPY excess is not just a cap-weight-vs-equal-weight
-      basis. But: the grid search picks a different "best" config under each
-      benchmark, and event-study t-stats remain sub-1 on every horizon —
-      i.e. there is no per-trade signal, the aggregate excess comes from
-      portfolio composition.</li>
+      the freezes and yields +2.53% OOS excess vs SPY. Run #4 cross-checked
+      against RSP (equal-weight) but the grid search picked a different
+      "best" config under each benchmark, so it wasn't strictly
+      apples-to-apples.</li>
+  <li>Runs #5 and #6 close that gap: identical strategy parameters
+      (<code>hold=63, min_members=1</code>) under SPY and RSP. Strategy
+      returns +20.44% OOS in both — <b>+2.53% over SPY, +5.44% over RSP</b>.
+      The excess is real, not a mechanical equal-weight basis. Event-study
+      t-stats remain sub-1 on every horizon, so there is no per-trade
+      signal — the aggregate excess comes from portfolio composition
+      (broad rotating exposure to congressionally-traded names), not
+      stock-picking.</li>
   <li>Open question after this report: would a signal-driven exit policy
       (mirror member sells; trailing-stop variants) substantively change
       the picture? See "next steps".</li>
