@@ -125,21 +125,24 @@ def _load_runs(run_ids: list[int]) -> list[dict]:
 # ── Plotly figure JSON ──────────────────────────────────────────────────────
 
 def _nav_figure(runs: list[dict]) -> dict:
-    """Overlay each run's OOS NAV curve, plus the (shared) SPY benchmark from
-    the latest run. Strategies on the same date axis make the freeze gaps in
-    min_members=2 immediately visible alongside the smooth min_members=1
-    curve."""
+    """Overlay each run's OOS strategy NAV plus one benchmark NAV per distinct
+    benchmark ticker (SPY, RSP, …). Strategies and benchmarks share the
+    calendar so the freeze stretches and benchmark differentials are visible
+    side-by-side."""
     traces = []
-    benchmark_drawn = False
     palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+    bench_colors = {"SPY": "#7f7f7f", "RSP": "#444444"}
+    benchmarks_drawn: set[str] = set()
     for i, r in enumerate(runs):
         oos = r["full_results"].get("out_of_sample_test") or {}
         nav = oos.get("nav_curve") or []
         if not nav:
             continue
-        params = r["full_results"].get("selected_params") or {}
+        sel = r["full_results"].get("selected_params") or {}
+        bench = r["scores"].get("benchmark") or r["params"].get("benchmark") or "SPY"
         label = (f"Run #{r['id']} · {r['params'].get('date_field')} · "
-                 f"min_members={params.get('min_members')} · hold={params.get('horizon_days')}d")
+                 f"min_members={sel.get('min_members')} · hold={sel.get('horizon_days')}d "
+                 f"· bench {bench}")
         traces.append({
             "type": "scatter", "mode": "lines",
             "x": [p["date"] for p in nav],
@@ -147,23 +150,24 @@ def _nav_figure(runs: list[dict]) -> dict:
             "name": label,
             "line": {"color": palette[i % len(palette)], "width": 2},
         })
-        if not benchmark_drawn:
+        if bench not in benchmarks_drawn:
             traces.append({
                 "type": "scatter", "mode": "lines",
                 "x": [p["date"] for p in nav],
                 "y": [p["benchmark"] for p in nav],
-                "name": "SPY (benchmark)",
-                "line": {"color": "#7f7f7f", "width": 2, "dash": "dot"},
+                "name": f"{bench} (benchmark)",
+                "line": {"color": bench_colors.get(bench, "#aaaaaa"),
+                         "width": 2, "dash": "dot"},
             })
-            benchmark_drawn = True
+            benchmarks_drawn.add(bench)
 
     layout = {
-        "title": "Out-of-sample NAV — strategy variants vs SPY",
+        "title": "Out-of-sample NAV — strategy variants vs benchmarks",
         "xaxis": {"title": "date"},
         "yaxis": {"title": "NAV (start = 1.00)", "tickformat": ".2f"},
         "hovermode": "x unified",
-        "legend": {"orientation": "h", "y": -0.18},
-        "margin": {"l": 60, "r": 30, "t": 60, "b": 100},
+        "legend": {"orientation": "h", "y": -0.22},
+        "margin": {"l": 60, "r": 30, "t": 60, "b": 120},
     }
     return {"data": traces, "layout": layout}
 
@@ -234,10 +238,12 @@ def _runs_table(runs: list[dict]) -> str:
         p = r["params"]
         sc = r["scores"]
         sel = sc.get("selected_params", {})
+        bench = sc.get("benchmark") or p.get("benchmark") or "SPY"
         rows.append(
             f"<tr>"
             f"<td>#{r['id']}</td>"
             f"<td><code>{html.escape(p.get('date_field') or '')}</code></td>"
+            f"<td><code>{html.escape(bench)}</code></td>"
             f"<td>{html.escape(p.get('train_start',''))} → {html.escape(p.get('train_end',''))}</td>"
             f"<td>{html.escape(p.get('test_start',''))} → {html.escape(p.get('test_end',''))}</td>"
             f"<td><code>{p.get('hold_days')}</code></td>"
@@ -251,10 +257,11 @@ def _runs_table(runs: list[dict]) -> str:
     return (
         "<table>"
         "<thead><tr>"
-        "<th>run</th><th>anchor</th><th>train window</th><th>test window</th>"
+        "<th>run</th><th>anchor</th><th>bench</th>"
+        "<th>train window</th><th>test window</th>"
         "<th>hold_days grid</th><th>min_members grid</th><th>selected</th>"
         "<th class='num'>train excess</th><th class='num'>OOS excess</th>"
-        "<th class='num'>OOS strat</th><th class='num'>OOS SPY</th>"
+        "<th class='num'>OOS strat</th><th class='num'>OOS bench</th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
 
 
@@ -310,11 +317,14 @@ before reading the results.
         ≥N distinct congressional buyers within a trailing 30-day window. The
         window length is hard-coded at 30 days in this version of the engine.</td></tr>
 <tr><td class="key">Benchmark</td>
-    <td>SPY only (cap-weighted S&amp;P 500). <b>No equal-weight (RSP) comparison
-        was performed</b> — relevant because with <code>min_members=1</code>
-        the strategy holds 200+ tickers and resembles equal-weight broad
-        equity, where a few-percent SPY-relative basis is mechanical, not
-        informational.</td></tr>
+    <td>Per-run. SPY (cap-weighted S&amp;P 500) is the default; RSP
+        (Invesco equal-weight S&amp;P 500) is used as a cross-check on
+        whether any SPY-relative excess is mechanical (equal-weight basis)
+        vs informational (congressional signal). The benchmark choice
+        affects in-sample grid selection — the "best" config on training
+        data can shift between hold_days = 21 and 63 depending on
+        benchmark, so cross-benchmark numbers are not strictly
+        apples-to-apples unless the grid is held fixed.</td></tr>
 <tr><td class="key">Transaction costs</td>
     <td>Zero. No slippage, no spread, no commissions modeled.</td></tr>
 <tr><td class="key">Train / test split</td>
@@ -377,12 +387,12 @@ def _next_steps_section() -> str:
     return """
 <h2 id="next">Open questions &amp; next steps</h2>
 <ol class="tight">
-<li><b>Equal-weight benchmark.</b> Run #3's +2.53% OOS excess vs SPY must be
-    cross-checked against RSP (equal-weight S&amp;P 500). With ~235 concurrent
-    positions the strategy approaches a rotating equal-weight basket, where
-    a few-percent SPY-relative basis can be mechanical (EW-vs-CW) rather
-    than a stock-picking edge. Until this is run, attribute nothing to the
-    congressional signal.</li>
+<li><b>Equal-weight benchmark — addressed (run #4).</b> The strategy beats
+    RSP as well as SPY, so the SPY excess is not a pure equal-weight basis.
+    Caveat: the in-sample grid selection diverged between benchmarks
+    (SPY → hold=63; RSP → hold=21), so a clean apples-to-apples requires
+    forcing a fixed grid across runs — worth doing as a small follow-up
+    before drawing structural conclusions.</li>
 <li><b>Signal-driven exits.</b> The hard-timer exit is an event-study
     construct, not a strategy. A realistic strategy mixes:
     <ul>
@@ -439,13 +449,20 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
       <b>no edge.</b> In-sample grid winners went OOS-negative — classic small-sample overfit.</li>
   <li>Re-anchored on <code>transaction_date</code> (run #2): same conclusion. Visible
       NAV freezes through 2025-Q1, Aug, Oct–Nov, and Feb 2026 came from the
-      conviction filter eliminating 80–95% of buys, combined with the hard
-      21-day exit.</li>
+      conviction filter eliminating 80–95% of buys combined with the hard
+      21-day exit (every position auto-closes on a timer, so quiet stretches
+      leave the strategy fully cashed-out).</li>
   <li>Removing the conviction filter (run #3, <code>min_members=1</code>) eliminates
-      the freezes and yields +2.53% OOS excess vs SPY — <em>but</em> the strategy
-      now resembles an equal-weight rotating basket of 200+ names, so the excess
-      must be re-validated against RSP before attributing it to a congressional
-      signal. Event-study t-stats remain sub-1 on every horizon.</li>
+      the freezes and yields +2.53% OOS excess vs SPY — and the equal-weight
+      cross-check (run #4, benchmark RSP) shows the strategy <em>also</em>
+      beats RSP, so the SPY excess is not just a cap-weight-vs-equal-weight
+      basis. But: the grid search picks a different "best" config under each
+      benchmark, and event-study t-stats remain sub-1 on every horizon —
+      i.e. there is no per-trade signal, the aggregate excess comes from
+      portfolio composition.</li>
+  <li>Open question after this report: would a signal-driven exit policy
+      (mirror member sells; trailing-stop variants) substantively change
+      the picture? See "next steps".</li>
 </ul>
 
 {_assumptions_section()}
@@ -494,14 +511,26 @@ def _ints(s: str) -> list[int]:
     return [int(x) for x in s.split(",") if x.strip()]
 
 
+def _derived_output_path(out_dir: Path, run_ids: list[int]) -> Path:
+    """Filename convention: report_runs<ids>_<YYYY-MM-DD>.html (for traceability)."""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    ids_part = "-".join(str(i) for i in run_ids)
+    return out_dir / f"report_runs{ids_part}_{today}.html"
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--run-ids", type=_ints, required=True,
                    help="Comma-separated AnalysisRun ids to include, in display order.")
-    p.add_argument("--output", required=True,
-                   help="Path to write the HTML report.")
+    p.add_argument("--output",
+                   help="Output path. If omitted or a directory, the filename is "
+                        "auto-derived as report_runs<ids>_<YYYY-MM-DD>.html under "
+                        "--output-dir.")
+    p.add_argument("--output-dir", default="reports",
+                   help="Directory for the auto-derived filename when --output is "
+                        "omitted (default: reports/).")
     p.add_argument("--survival-min-members", type=int, default=2,
                    help="min_members used for the survival diagnostic chart (default 2 — "
                         "matches the run #2 freeze story).")
@@ -515,6 +544,17 @@ def main() -> None:
     if not runs:
         raise SystemExit("No runs found for the provided ids.")
 
+    # Resolve output path. If --output is a directory (or omitted) the filename
+    # follows the run-ids + date convention so each report stays traceable.
+    if args.output:
+        cand = Path(args.output)
+        if cand.is_dir() or args.output.endswith(("/", "\\")):
+            out_path = _derived_output_path(cand, args.run_ids)
+        else:
+            out_path = cand
+    else:
+        out_path = _derived_output_path(Path(args.output_dir), args.run_ids)
+
     sw_start_s, sw_end_s = args.survival_window.split(":")
     survival = _conviction_survival_by_month(
         date.fromisoformat(sw_start_s), date.fromisoformat(sw_end_s),
@@ -525,10 +565,9 @@ def main() -> None:
                      "cluster_days": args.survival_cluster_days}
 
     html_out = build_html(runs, survival, survival_meta)
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(html_out, encoding="utf-8")
-    logging.info(f"Wrote {out}  ({len(html_out):,} bytes)")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html_out, encoding="utf-8")
+    logging.info(f"Wrote {out_path}  ({len(html_out):,} bytes)")
 
 
 if __name__ == "__main__":

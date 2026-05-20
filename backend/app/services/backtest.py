@@ -24,7 +24,7 @@ from app import models
 
 logger = logging.getLogger(__name__)
 
-BENCHMARK = "SPY"
+DEFAULT_BENCHMARK = "SPY"                    # cap-weighted S&P 500
 HORIZONS = {"1w": 5, "1m": 21, "3m": 63}     # name -> trading days
 BUCKET_THRESHOLD = 0.02                      # +/-2% excess return = "in-line"
 PRICE_BATCH = 50                             # tickers per Yahoo batch download
@@ -164,11 +164,14 @@ def _summarize(excess_returns: list[float]) -> dict:
 # ── Event study ─────────────────────────────────────────────────────────────
 
 def event_study(start: date, end: date, date_field: str = "filing_date",
-                horizons: dict | None = None) -> dict:
+                horizons: dict | None = None,
+                benchmark: str = DEFAULT_BENCHMARK) -> dict:
     """Mean excess return after congressional buys vs sells, by horizon & chamber.
 
     `date_field` chooses the event anchor: 'filing_date' (the public date — for
     a tradeable strategy) or 'transaction_date' (when the member actually traded).
+    `benchmark` is the ticker excess returns are measured against (default SPY,
+    cap-weighted; RSP is the equal-weight S&P 500 alternative).
     """
     horizons = horizons or HORIZONS
     db = SessionLocal()
@@ -192,9 +195,9 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             .all()
         )
         tickers = {r.ticker for r in rows}
-        ensure_prices(tickers | {BENCHMARK}, start, end + timedelta(days=130))
+        ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
 
-        spy = _close_series(db, BENCHMARK)
+        spy = _close_series(db, benchmark)
         series_cache: dict[str, pd.Series | None] = {}
 
         def series(t):
@@ -235,6 +238,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
         return {
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "date_field": date_field,
+            "benchmark": benchmark,
             "events_total": len(rows),
             "events_missing_price": missing_price,
             "results": result,
@@ -246,7 +250,8 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
 # ── Rules backtest (calendar NAV simulation) ────────────────────────────────
 
 def rules_backtest(start: date, end: date, horizon_days: int = 63,
-                   min_members: int = 1, date_field: str = "filing_date") -> dict:
+                   min_members: int = 1, date_field: str = "filing_date",
+                   benchmark: str = DEFAULT_BENCHMARK) -> dict:
     """Simulate an equal-weight 'follow the buys' portfolio vs SPY buy-and-hold.
 
     Each qualifying purchase opens a position the trading day after its event
@@ -274,11 +279,11 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             .all()
         )
         tickers = {r.ticker for r in rows}
-        ensure_prices(tickers | {BENCHMARK}, start, end + timedelta(days=130))
+        ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
 
-        spy = _close_series(db, BENCHMARK)
+        spy = _close_series(db, benchmark)
         if spy is None:
-            return {"error": "no benchmark price data"}
+            return {"error": f"no benchmark price data for {benchmark}"}
         # extend the calendar past `end` so positions opened late still mature
         cal_end = pd.Timestamp(end) + timedelta(days=int(horizon_days * 1.6))
         spy = spy[(spy.index >= pd.Timestamp(start)) & (spy.index <= cal_end)]
@@ -338,7 +343,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
         return {
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "params": {"horizon_days": horizon_days, "min_members": min_members,
-                       "date_field": date_field},
+                       "date_field": date_field, "benchmark": benchmark},
             "positions_opened": positions,
             "days_invested": invested_days,
             "trading_days": len(calendar),
@@ -372,24 +377,27 @@ def train_test_analysis(train_start: date, train_end: date,
                         test_start: date, test_end: date,
                         date_field: str = "filing_date",
                         param_grid: list | None = None,
-                        horizons: dict | None = None) -> dict:
+                        horizons: dict | None = None,
+                        benchmark: str = DEFAULT_BENCHMARK) -> dict:
     """Grid-search the strategy on the training years, then evaluate the single
     best configuration once on the held-out test year. The test period is
     touched exactly once, with parameters locked from training."""
     param_grid = param_grid or PARAM_GRID
-    es_train = event_study(train_start, train_end, date_field, horizons)
-    es_test = event_study(test_start, test_end, date_field, horizons)
+    es_train = event_study(train_start, train_end, date_field, horizons, benchmark=benchmark)
+    es_test = event_study(test_start, test_end, date_field, horizons, benchmark=benchmark)
 
     grid = []
     for params in param_grid:
         grid.append({"params": params,
                      "result": rules_backtest(train_start, train_end,
-                                              date_field=date_field, **params)})
+                                              date_field=date_field,
+                                              benchmark=benchmark, **params)})
 
     best = max(grid, key=lambda g: g["result"].get("excess_return", -1e9))
     selected_train_result = best["result"]
     out_of_sample = rules_backtest(test_start, test_end,
-                                   date_field=date_field, **best["params"])
+                                   date_field=date_field,
+                                   benchmark=benchmark, **best["params"])
 
     # strip NAV curves from the grid comparison to keep the payload small
     grid_summary = [
@@ -400,6 +408,7 @@ def train_test_analysis(train_start: date, train_end: date,
 
     return {
         "date_field": date_field,
+        "benchmark": benchmark,
         "train_window": {"start": train_start.isoformat(), "end": train_end.isoformat()},
         "test_window": {"start": test_start.isoformat(), "end": test_end.isoformat()},
         "event_study": {"train": es_train, "test": es_test},

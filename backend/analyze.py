@@ -62,6 +62,8 @@ def main() -> None:
                    help="backtest holding periods for the grid search")
     p.add_argument("--min-members", type=_ints, default=[1, 2, 3],
                    help="conviction thresholds (distinct buyers) for the grid")
+    p.add_argument("--benchmark", default="SPY",
+                   help="benchmark ticker for excess return (SPY cap-weight, RSP equal-weight)")
     p.add_argument("--output", help="path to write the full result JSON")
     args = p.parse_args()
 
@@ -69,7 +71,7 @@ def main() -> None:
     param_grid = [{"horizon_days": h, "min_members": m}
                   for h, m in itertools.product(args.hold_days, args.min_members)]
 
-    print(f"Analysis  anchor={args.date_field}")
+    print(f"Analysis  anchor={args.date_field}  benchmark={args.benchmark}")
     print(f"  train {args.train_start}..{args.train_end}"
           f"  |  test {args.test_start}..{args.test_end}")
     print(f"  grid: {len(param_grid)} configs  |  event horizons: {args.event_horizons}")
@@ -77,6 +79,7 @@ def main() -> None:
     result = backtest.train_test_analysis(
         args.train_start, args.train_end, args.test_start, args.test_end,
         date_field=args.date_field, param_grid=param_grid, horizons=horizons,
+        benchmark=args.benchmark,
     )
 
     _print_event_study(result["event_study"]["train"], "TRAIN")
