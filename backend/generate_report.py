@@ -238,11 +238,19 @@ def _runs_table(runs: list[dict]) -> str:
         p = r["params"]
         sc = r["scores"]
         sel = sc.get("selected_params", {})
+        anchor = p.get("date_field") or ""
         bench = sc.get("benchmark") or p.get("benchmark") or "SPY"
+        # Tradeable = anchored on filing_date (publicly observable in real time).
+        # transaction_date anchoring builds in look-ahead bias.
+        tradeable = anchor == "filing_date"
+        tag = ("<span style='color:#047857;font-weight:600'>tradeable</span>"
+               if tradeable
+               else "<span style='color:#b91c1c'>diagnostic</span>")
         rows.append(
             f"<tr>"
             f"<td>#{r['id']}</td>"
-            f"<td><code>{html.escape(p.get('date_field') or '')}</code></td>"
+            f"<td>{tag}</td>"
+            f"<td><code>{html.escape(anchor)}</code></td>"
             f"<td><code>{html.escape(bench)}</code></td>"
             f"<td>{html.escape(p.get('train_start',''))} → {html.escape(p.get('train_end',''))}</td>"
             f"<td>{html.escape(p.get('test_start',''))} → {html.escape(p.get('test_end',''))}</td>"
@@ -257,12 +265,17 @@ def _runs_table(runs: list[dict]) -> str:
     return (
         "<table>"
         "<thead><tr>"
-        "<th>run</th><th>anchor</th><th>bench</th>"
+        "<th>run</th><th>kind</th><th>anchor</th><th>bench</th>"
         "<th>train window</th><th>test window</th>"
         "<th>hold_days grid</th><th>min_members grid</th><th>selected</th>"
         "<th class='num'>train excess</th><th class='num'>OOS excess</th>"
         "<th class='num'>OOS strat</th><th class='num'>OOS bench</th>"
-        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+        "<p style='font-size:0.85rem;color:#6e6e73;margin-top:0.4rem'>"
+        "<b>tradeable</b> = anchored on <code>filing_date</code> (publicly observable in "
+        "real time, ≤45-day STOCK Act lag respected). <b>diagnostic</b> = anchored on "
+        "<code>transaction_date</code> (the day the member actually traded — informative "
+        "for understanding the signal but contains look-ahead bias for any follower).</p>")
 
 
 def _assumptions_section() -> str:
@@ -387,23 +400,22 @@ def _next_steps_section() -> str:
     return """
 <h2 id="next">Open questions &amp; next steps</h2>
 <ol class="tight">
-<li><b>Equal-weight benchmark — closed (runs #5/#6).</b> Identical strategy
-    parameters under SPY and RSP both show the strategy ahead: +2.53% over
-    SPY, +5.44% over RSP. The excess is not a mechanical equal-weight
-    basis. (Note: this confirms a portfolio-composition effect, not a
-    per-trade signal — event-study t-stats remain sub-1.)</li>
+<li><b>Tradeable-anchor check — closed (runs #7/#8).</b> Repeating the
+    pinned grid on <code>filing_date</code> drops OOS excess to −2.82%
+    (SPY) and +0.09% (RSP). The apparent
+    <code>transaction_date</code> excess was look-ahead bias from
+    anchoring on a date that isn't publicly observable in real time.
+    Confirms that any future strategy claim must be reported on
+    <code>filing_date</code> to be considered actionable.</li>
 <li><b>Signal-driven exits.</b> The hard-timer exit is an event-study
-    construct, not a strategy. A realistic strategy mixes:
-    <ul>
-      <li><b>New entries</b> — buy when congress buys (current behavior).</li>
-      <li><b>Continued holds</b> — keep a position open as long as the
-          original member (or some quorum) hasn't disclosed a sale.</li>
-      <li><b>Active exits</b> — close when the disclosing member sells, or
-          when a trailing-stop / time-stop fires.</li>
-    </ul>
-    Adding an exit policy turns the engine from "average forward return at
-    fixed horizon" into "P&amp;L of a balanced rotation." This is the obvious
-    follow-up after the benchmark fix above.</li>
+    construct, not a strategy. A realistic strategy mixes new entries on
+    buys, continued holds while no sale is disclosed, and active exits
+    when the disclosing member sells (or a trailing/time-stop fires).
+    Worth implementing, but be sober about the prior: if the broad-buy
+    signal has no <code>filing_date</code> alpha, longer holds won't
+    create one — exit-policy gains would have to come from the sell-side
+    signal (event-study t-stats on sales are also sub-1 in this dataset,
+    so this is a "test it cheaply, don't expect much" item).</li>
 <li><b>Leadership restriction (v2).</b> Per the Wei &amp; Zhou (NBER, 2025)
     finding, the rank-and-file null we see here is consistent with the
     literature; their identified +47pp/yr alpha is concentrated in members
@@ -444,29 +456,40 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
 
 <h2 id="tldr">TL;DR</h2>
 <ul class="tight">
-  <li>v1 (run #1, <code>filing_date</code> anchor, grid over <code>min_members=1,2,3</code>):
-      <b>no edge.</b> In-sample grid winners went OOS-negative — classic small-sample overfit.</li>
-  <li>Re-anchored on <code>transaction_date</code> (run #2): same conclusion. Visible
-      NAV freezes through 2025-Q1, Aug, Oct–Nov, and Feb 2026 came from the
-      conviction filter eliminating 80–95% of buys combined with the hard
-      21-day exit (every position auto-closes on a timer, so quiet stretches
-      leave the strategy fully cashed-out).</li>
-  <li>Removing the conviction filter (run #3, <code>min_members=1</code>) eliminates
-      the freezes and yields +2.53% OOS excess vs SPY. Run #4 cross-checked
-      against RSP (equal-weight) but the grid search picked a different
-      "best" config under each benchmark, so it wasn't strictly
-      apples-to-apples.</li>
-  <li>Runs #5 and #6 close that gap: identical strategy parameters
-      (<code>hold=63, min_members=1</code>) under SPY and RSP. Strategy
-      returns +20.44% OOS in both — <b>+2.53% over SPY, +5.44% over RSP</b>.
-      The excess is real, not a mechanical equal-weight basis. Event-study
-      t-stats remain sub-1 on every horizon, so there is no per-trade
-      signal — the aggregate excess comes from portfolio composition
-      (broad rotating exposure to congressionally-traded names), not
-      stock-picking.</li>
-  <li>Open question after this report: would a signal-driven exit policy
-      (mirror member sells; trailing-stop variants) substantively change
-      the picture? See "next steps".</li>
+  <li>v1 (run #1, <code>filing_date</code> anchor, grid over
+      <code>min_members=1,2,3</code>): <b>no edge.</b> In-sample grid
+      winners went OOS-negative — classic small-sample overfit.</li>
+  <li>Re-anchored on <code>transaction_date</code> (run #2): same conclusion
+      at the same grid. Visible NAV freezes through 2025-Q1, Aug, Oct–Nov,
+      and Feb 2026 came from the conviction filter eliminating 80–95% of
+      buys plus the hard 21-day exit (every position auto-closes on a
+      timer, so quiet stretches leave the strategy fully cashed-out).</li>
+  <li>Removing the conviction filter (runs #3 and #5,
+      <code>min_members=1</code>, <code>transaction_date</code>) eliminated
+      the freezes and appeared to yield <b>+2.53% over SPY</b> and
+      <b>+5.44% over RSP</b> at OOS. Promising — but anchored on a date no
+      follower can know in real time.</li>
+  <li class="callout crit"><b>Actionable check (runs #7/#8): the edge
+      collapses.</b> Repeating the same strategy on <code>filing_date</code>
+      — the only anchor that respects the up-to-45-day STOCK Act
+      reporting lag — OOS strategy return drops from +20.44% to
+      <b>+15.08%</b>. Excess vs SPY becomes <b>−2.82%</b>, and excess vs
+      RSP collapses to <b>+0.09%</b> (effectively flat against
+      equal-weight). The 5.4-point gap between
+      <code>transaction_date</code> and <code>filing_date</code>
+      <em>is</em> a real phenomenon — congressional buys are concentrated
+      in names that drift up during the disclosure window — but the lag
+      eats the alpha. A follower trading at the disclosure cannot
+      capture it.</li>
+  <li><b>Final v1 conclusion stands:</b> there is no actionable edge in
+      broad congressional trading. The aggregated <code>transaction_date</code>
+      excess in runs #3–#6 was look-ahead bias from anchoring on a date
+      that isn't publicly observable in real time, not a strategy
+      result.</li>
+  <li>Where to look next: theory-driven subgroup cuts (leadership /
+      committee chairs per Wei &amp; Zhou 2025) and exit-policy variants
+      that may shift the picture beyond the timer-based event study used
+      here. See "next steps".</li>
 </ul>
 
 {_assumptions_section()}
