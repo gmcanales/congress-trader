@@ -16,7 +16,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import SessionLocal
@@ -29,6 +29,28 @@ HORIZONS = {"1w": 5, "1m": 21, "3m": 63}     # name -> trading days
 BUCKET_THRESHOLD = 0.02                      # +/-2% excess return = "in-line"
 PRICE_BATCH = 50                             # tickers per Yahoo batch download
 SELL_TYPES = ("sale", "sale_partial")
+# Position role_types considered "leadership" for the leadership_only filter.
+# Includes formal chamber leadership (Speaker, Majority Leader, etc.) and,
+# once chair tenure is ingested in v2 step 3, committee chairs.
+LEADERSHIP_ROLE_TYPES = ("leadership", "chair")
+
+
+def _leadership_exists_filter():
+    """SQLAlchemy EXISTS subquery: only trades where the member held a
+    leadership / chair position on the *transaction date*. The Wei & Zhou
+    mechanism is informational — the leader uses inside knowledge at the
+    moment they trade — so the position check anchors on transaction_date
+    regardless of the backtest's event-entry anchor."""
+    p = models.Position
+    t = models.Transaction
+    return (
+        select(1)
+        .where(p.member_id == t.member_id)
+        .where(p.role_type.in_(LEADERSHIP_ROLE_TYPES))
+        .where(t.transaction_date >= p.start_date)
+        .where(t.transaction_date <= func.coalesce(p.end_date, func.current_date()))
+        .exists()
+    )
 
 
 # ── Price data ──────────────────────────────────────────────────────────────
@@ -165,19 +187,22 @@ def _summarize(excess_returns: list[float]) -> dict:
 
 def event_study(start: date, end: date, date_field: str = "filing_date",
                 horizons: dict | None = None,
-                benchmark: str = DEFAULT_BENCHMARK) -> dict:
+                benchmark: str = DEFAULT_BENCHMARK,
+                leadership_only: bool = False) -> dict:
     """Mean excess return after congressional buys vs sells, by horizon & chamber.
 
     `date_field` chooses the event anchor: 'filing_date' (the public date — for
     a tradeable strategy) or 'transaction_date' (when the member actually traded).
     `benchmark` is the ticker excess returns are measured against (default SPY,
     cap-weighted; RSP is the equal-weight S&P 500 alternative).
+    `leadership_only` restricts events to trades made while the member held
+    a leadership or committee-chair position (theory-driven cut per Wei & Zhou).
     """
     horizons = horizons or HORIZONS
     db = SessionLocal()
     try:
         date_col = getattr(models.Transaction, date_field)
-        rows = (
+        q = (
             db.query(
                 models.Transaction.ticker.label("ticker"),
                 date_col.label("event_date"),
@@ -192,8 +217,10 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
                 date_col >= start,
                 date_col <= end,
             )
-            .all()
         )
+        if leadership_only:
+            q = q.filter(_leadership_exists_filter())
+        rows = q.all()
         tickers = {r.ticker for r in rows}
         ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
 
@@ -239,6 +266,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "date_field": date_field,
             "benchmark": benchmark,
+            "leadership_only": leadership_only,
             "events_total": len(rows),
             "events_missing_price": missing_price,
             "results": result,
@@ -251,7 +279,8 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
 
 def rules_backtest(start: date, end: date, horizon_days: int = 63,
                    min_members: int = 1, date_field: str = "filing_date",
-                   benchmark: str = DEFAULT_BENCHMARK) -> dict:
+                   benchmark: str = DEFAULT_BENCHMARK,
+                   leadership_only: bool = False) -> dict:
     """Simulate an equal-weight 'follow the buys' portfolio vs SPY buy-and-hold.
 
     Each qualifying purchase opens a position the trading day after its event
@@ -261,7 +290,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
     db = SessionLocal()
     try:
         date_col = getattr(models.Transaction, date_field)
-        rows = (
+        q = (
             db.query(
                 models.Transaction.ticker.label("ticker"),
                 date_col.label("event_date"),
@@ -275,9 +304,10 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                 date_col <= end,
                 models.Transaction.transaction_type == "purchase",
             )
-            .order_by(date_col)
-            .all()
         )
+        if leadership_only:
+            q = q.filter(_leadership_exists_filter())
+        rows = q.order_by(date_col).all()
         tickers = {r.ticker for r in rows}
         ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
 
@@ -343,7 +373,8 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
         return {
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "params": {"horizon_days": horizon_days, "min_members": min_members,
-                       "date_field": date_field, "benchmark": benchmark},
+                       "date_field": date_field, "benchmark": benchmark,
+                       "leadership_only": leadership_only},
             "positions_opened": positions,
             "days_invested": invested_days,
             "trading_days": len(calendar),
@@ -378,26 +409,33 @@ def train_test_analysis(train_start: date, train_end: date,
                         date_field: str = "filing_date",
                         param_grid: list | None = None,
                         horizons: dict | None = None,
-                        benchmark: str = DEFAULT_BENCHMARK) -> dict:
+                        benchmark: str = DEFAULT_BENCHMARK,
+                        leadership_only: bool = False) -> dict:
     """Grid-search the strategy on the training years, then evaluate the single
     best configuration once on the held-out test year. The test period is
     touched exactly once, with parameters locked from training."""
     param_grid = param_grid or PARAM_GRID
-    es_train = event_study(train_start, train_end, date_field, horizons, benchmark=benchmark)
-    es_test = event_study(test_start, test_end, date_field, horizons, benchmark=benchmark)
+    es_train = event_study(train_start, train_end, date_field, horizons,
+                           benchmark=benchmark, leadership_only=leadership_only)
+    es_test = event_study(test_start, test_end, date_field, horizons,
+                          benchmark=benchmark, leadership_only=leadership_only)
 
     grid = []
     for params in param_grid:
         grid.append({"params": params,
                      "result": rules_backtest(train_start, train_end,
                                               date_field=date_field,
-                                              benchmark=benchmark, **params)})
+                                              benchmark=benchmark,
+                                              leadership_only=leadership_only,
+                                              **params)})
 
     best = max(grid, key=lambda g: g["result"].get("excess_return", -1e9))
     selected_train_result = best["result"]
     out_of_sample = rules_backtest(test_start, test_end,
                                    date_field=date_field,
-                                   benchmark=benchmark, **best["params"])
+                                   benchmark=benchmark,
+                                   leadership_only=leadership_only,
+                                   **best["params"])
 
     # strip NAV curves from the grid comparison to keep the payload small
     grid_summary = [
@@ -409,6 +447,7 @@ def train_test_analysis(train_start: date, train_end: date,
     return {
         "date_field": date_field,
         "benchmark": benchmark,
+        "leadership_only": leadership_only,
         "train_window": {"start": train_start.isoformat(), "end": train_end.isoformat()},
         "test_window": {"start": test_start.isoformat(), "end": test_end.isoformat()},
         "event_study": {"train": es_train, "test": es_test},

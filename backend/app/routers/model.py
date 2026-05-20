@@ -28,6 +28,7 @@ class AnalyzeRequest(BaseModel):
     hold_days: list[int] = [21, 63]
     min_members: list[int] = [1, 2, 3]
     benchmark: str = "SPY"  # ticker excess returns are measured against (SPY cap-weight, RSP equal-weight)
+    leadership_only: bool = False  # restrict to trades made while member held a leadership/chair position
 
 
 def _extract_scores(result: dict) -> dict:
@@ -37,6 +38,7 @@ def _extract_scores(result: dict) -> dict:
     return {
         "date_field": result["date_field"],
         "benchmark": result.get("benchmark", "SPY"),
+        "leadership_only": result.get("leadership_only", False),
         "selected_params": result["selected_params"],
         "train_excess": st["excess_return"],
         "oos_excess": oos["excess_return"],
@@ -59,6 +61,7 @@ def _run(run_id: int) -> None:
             date.fromisoformat(p["test_start"]), date.fromisoformat(p["test_end"]),
             date_field=p["date_field"], param_grid=grid, horizons=horizons,
             benchmark=p.get("benchmark", "SPY"),
+            leadership_only=p.get("leadership_only", False),
         )
         run.full_results = result
         run.scores = _extract_scores(result)
@@ -107,6 +110,7 @@ def run_model(req: AnalyzeRequest, background_tasks: BackgroundTasks,
         "hold_days": req.hold_days,
         "min_members": req.min_members,
         "benchmark": req.benchmark,
+        "leadership_only": req.leadership_only,
     }
     run = models.AnalysisRun(
         dataset_id=req.dataset_id, tool="train_test_analysis",

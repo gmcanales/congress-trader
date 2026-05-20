@@ -240,16 +240,18 @@ def _runs_table(runs: list[dict]) -> str:
         sel = sc.get("selected_params", {})
         anchor = p.get("date_field") or ""
         bench = sc.get("benchmark") or p.get("benchmark") or "SPY"
-        # Tradeable = anchored on filing_date (publicly observable in real time).
-        # transaction_date anchoring builds in look-ahead bias.
+        leadership = bool(sc.get("leadership_only") or p.get("leadership_only"))
         tradeable = anchor == "filing_date"
         tag = ("<span style='color:#047857;font-weight:600'>tradeable</span>"
                if tradeable
                else "<span style='color:#b91c1c'>diagnostic</span>")
+        lead_tag = ("<span style='color:#7c3aed;font-weight:600'>leadership</span>"
+                    if leadership else "<span style='color:#6e6e73'>all members</span>")
         rows.append(
             f"<tr>"
             f"<td>#{r['id']}</td>"
             f"<td>{tag}</td>"
+            f"<td>{lead_tag}</td>"
             f"<td><code>{html.escape(anchor)}</code></td>"
             f"<td><code>{html.escape(bench)}</code></td>"
             f"<td>{html.escape(p.get('train_start',''))} → {html.escape(p.get('train_end',''))}</td>"
@@ -265,7 +267,7 @@ def _runs_table(runs: list[dict]) -> str:
     return (
         "<table>"
         "<thead><tr>"
-        "<th>run</th><th>kind</th><th>anchor</th><th>bench</th>"
+        "<th>run</th><th>kind</th><th>universe</th><th>anchor</th><th>bench</th>"
         "<th>train window</th><th>test window</th>"
         "<th>hold_days grid</th><th>min_members grid</th><th>selected</th>"
         "<th class='num'>train excess</th><th class='num'>OOS excess</th>"
@@ -275,7 +277,9 @@ def _runs_table(runs: list[dict]) -> str:
         "<b>tradeable</b> = anchored on <code>filing_date</code> (publicly observable in "
         "real time, ≤45-day STOCK Act lag respected). <b>diagnostic</b> = anchored on "
         "<code>transaction_date</code> (the day the member actually traded — informative "
-        "for understanding the signal but contains look-ahead bias for any follower).</p>")
+        "for understanding the signal but contains look-ahead bias for any follower). "
+        "<b>leadership</b> universe = trades made while the member held a chamber "
+        "leadership or committee-chair position; <b>all members</b> = no such filter.</p>")
 
 
 def _assumptions_section() -> str:
@@ -491,6 +495,44 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
       that may shift the picture beyond the timer-based event study used
       here. See "next steps".</li>
 </ul>
+
+<h2 id="leadership-prelim">Preliminary leadership-only result — interpret with extreme caution</h2>
+<p class="callout crit">
+Runs <b>#9 / #10</b> apply the v2 leadership filter (trades made while
+the member held a Speaker / Majority Leader / Minority Leader / Whip /
+Conference Chair / Policy Committee Chair position) to the same
+pinned grid (<code>filing_date</code>, hold=63, min=1). Aggregate OOS
+excess looks dramatic: <b>+38.11% vs SPY, +41.02% vs RSP</b>. <b>It
+is almost certainly noise.</b>
+</p>
+<ul class="tight">
+<li><b>Train/test sign flip:</b> in-sample (2021-2024) excess was
+    <b>−61.76%</b>; OOS (2025) jumped to <b>+38.11%</b>. A 100-point
+    swing between adjacent windows is the textbook signature of small-sample
+    variance, not a stable signal.</li>
+<li><b>Per-trade event study disagrees:</b> at the 5-day horizon the
+    leadership buys post a mean excess return of <b>−4.03%</b> with a
+    t-stat of <b>−2.65</b> — i.e., statistically significant
+    underperformance for individual trades. The 21d and 63d horizons
+    are zero-to-negative. The aggregate gain is portfolio-composition
+    behaviour (equal-weight rotation through a handful of names that
+    happened to rally in 2025), not a stock-picking signal.</li>
+<li><b>Sample is tiny and concentrated:</b> 67 train + 45 OOS positions,
+    dominated by five members (Capito 135 trades, McClain 61, Clark 48,
+    Pelosi 30, McConnell 16 in our underlying data). We are effectively
+    measuring those five individuals' 2025 luck.</li>
+<li><b>Committee chairs are not yet in this dataset.</b> Step 3 of the
+    v2 plan (Congress.gov bulk committee XML) is the genuine widening
+    of the universe. Until that lands the leadership-only number should
+    be treated as a sanity check, not a result.</li>
+</ul>
+<p>
+Bottom line: this run does <em>not</em> reproduce a Wei &amp; Zhou-style
+leadership alpha. Wei &amp; Zhou use 26 years of data with within-member
+pre/post-ascension identification on 20 leaders; we have 4 years with
+67 leader-window trades, no within-member panel, and a per-trade signal
+that points <em>against</em> the aggregate result.
+</p>
 
 {_assumptions_section()}
 
