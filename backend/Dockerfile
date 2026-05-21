@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev \
+    gcc g++ libpq-dev \
     poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
