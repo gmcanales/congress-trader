@@ -142,13 +142,31 @@ docker-compose.yml  .env
 
 - Data: 2021–2025 House + Senate (~12k transactions) ingested on the NUC.
   Local `db` container holds a backup copy.
-- v1 backtest complete — null on the actionable anchor. Eight runs
-  catalogued in `analysis_runs`; current canonical report is
-  `reports/report_runs1-2-3-4-5-6-7-8_2026-05-20.html`.
-- v2 leadership prep underway (bioguide backfilled, positions ingest
-  next). No new modeling has been run against the leadership subset yet.
+- v1 backtest complete — null on the actionable (`filing_date`) anchor.
+- v2 leadership work complete through step 3: bioguide_id backfilled,
+  positions table populated (37 chamber leadership + 120 committee
+  chairs/rankings = 157 tenures), sector data ingested, Bayesian
+  hierarchical model fitted.
+- 18 `AnalysisRun` rows catalogued (#1-#17 rules-backtests + #18
+  Bayesian hierarchical). Current canonical report:
+  `reports/report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-21.html`.
+- **v2 finding:** Bayesian posterior on `leadership_at_trade` after
+  controlling for member baseline, in-majority status, post-trifecta
+  period, party, and sector: P(β > 0) = 0.58, 94% HDI [−2.1%, +2.5%].
+  Not credibly distinguishable from zero. The rules-backtest "leadership
+  edge" was largely the trifecta-period dummy (P=0.90) + sector
+  composition (energy long, cyclicals/materials/industrials short)
+  mis-attributed because the leadership filter overlaps the trifecta
+  window in our data.
 - Known data gap: ~12% scanned/checkbox-grid filings parse poorly
   (deferred).
+
+### Project history
+
+The full chronological narrative — every major decision, scope
+expansion, and methodological pivot, with cross-references to commits
+and AnalysisRun ids — is in [`docs/decision_log.md`](docs/decision_log.md).
+Read that first if you're picking the project up cold.
 
 Project context and decisions are also tracked in Claude's memory files
 under `~/.claude/projects/.../memory/` — read `MEMORY.md` there first.
