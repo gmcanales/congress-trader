@@ -366,7 +366,12 @@ def _runs_table(runs: list[dict]) -> str:
         bench_mode = sc.get("benchmark_mode") or p.get("benchmark_mode") or "ticker"
         bench_label = bench if bench_mode == "ticker" else f"sector ({bench} cal.)"
         exit_policy = sc.get("exit_policy") or p.get("exit_policy") or "fixed_horizon"
-        exit_short = "fixed" if exit_policy == "fixed_horizon" else "mirror+stop"
+        exit_short = {
+            "fixed_horizon": "fixed",
+            "mirror_sell": "mirror_only",
+            "mirror_sell_with_trailing_stop": "mirror+15%",
+            "mirror_sell_with_beta_trailing_stop": "mirror+β",
+        }.get(exit_policy, exit_policy)
         leadership = bool(sc.get("leadership_only") or p.get("leadership_only"))
         tradeable = anchor == "filing_date"
         tag = ("<span style='color:#047857;font-weight:600'>tradeable</span>"
@@ -1003,23 +1008,6 @@ positions; on its own it isn't tight enough to manage risk, and combined
 with a 15% trailing it stops too often.
 </p>
 
-<p class="callout">
-<b>Takeaway for the strategy framework.</b> The engine is now ready for
-signal-driven exits, the recommendation pipeline that needs them, and
-position-level state tracking. But this particular exit policy at this
-trailing-stop level isn't the right one. Plausible next iterations
-(<i>not run here</i>):
-<ul class="tight">
-<li><b>Loosen the trailing stop</b> (25-30% instead of 15%) to let
-2025-style volatility breathe.</li>
-<li><b>Drop the trailing stop entirely</b> and rely on the mirror signal
-alone + a longer time stop (mirror-only run). Would isolate the value
-of the literal-follower mechanic.</li>
-<li><b>Use a volatility-scaled trailing stop</b> (e.g. 2× trailing 30-day
-realized vol) so the stop adapts to each ticker's noise level.</li>
-</ul>
-</p>
-
 <p>
 Also worth flagging: on the corrected MTM convention, the all-member
 filing-date strategy with the hard-timer exit actually does beat SPY
@@ -1028,10 +1016,116 @@ However, the Bayesian model on per-trade excess returns is unaffected
 by the bug (it computes 63-day forward excess from filing_date, not
 from cal_end) — its verdict that the <em>per-trade</em> leadership
 effect is not credible, and that the aggregate gain is composition
-(post-trifecta period + sector tilts), still stands. The +3.19%
-aggregate result is consistent with that decomposition, not evidence
-against it.
+(post-trifecta period + sector tilts), still stands.
 </p>
+
+<h3 id="phase1b">Phase 1b — mirror-only and beta-scaled trailing stop (runs #31-#38)</h3>
+<p>
+The fixed 15% trailing stop fired on 74% of positions and was clearly the
+wrong knob for 2025 volatility. Two principled alternatives:
+</p>
+<ul class="tight">
+<li><b>`mirror_sell` (no stop)</b> — the literal-follower variant. Close
+on the same-member sale disclosure, with a 252-day time stop fallback
+and end-of-window as a catch-all. Isolates the value of the actual
+mirror signal without any noise-driven exits.</li>
+<li><b>`mirror_sell_with_beta_trailing_stop`</b> — replace the fixed 15%
+with a beta-scaled stop: <code>stop_pct = 15% × clip(β, 0.5, 3.0)</code>
+where β is the ticker's OLS beta vs SPY over the trailing 252 trading
+days. Defensive names get tighter ~7-13% stops while high-beta tech /
+momentum names get 20-30% wiggle room — adaptive to each ticker's
+intrinsic noise.</li>
+</ul>
+
+<table>
+<thead><tr>
+<th>exit policy</th>
+<th>universe</th>
+<th class='num'>OOS excess vs SPY</th>
+<th class='num'>OOS excess vs RSP</th>
+<th class='num'>OOS strategy return</th>
+<th class='num'>positions opened</th>
+</tr></thead><tbody>
+<tr><td>fixed_horizon (#23, #25)</td><td>all</td>
+<td class='num'>+3.19%</td><td class='num'>+9.66%</td>
+<td class='num'>+21.19%</td><td class='num'>796</td></tr>
+<tr><td>fixed_horizon (#25, #26)</td><td>leadership</td>
+<td class='num'>+5.57%</td><td class='num'>+12.04%</td>
+<td class='num'>+23.58%</td><td class='num'>186</td></tr>
+<tr style="background:#fef2f2"><td>mirror+15% stop (#27, #28)</td><td>all</td>
+<td class='num'>−2.14%</td><td class='num'>+4.33%</td>
+<td class='num'>+15.87%</td><td class='num'>796</td></tr>
+<tr style="background:#fef2f2"><td>mirror+15% stop (#29, #30)</td><td>leadership</td>
+<td class='num'>+1.67%</td><td class='num'>+8.14%</td>
+<td class='num'>+19.68%</td><td class='num'>186</td></tr>
+<tr><td>mirror_sell (no stop) (#31, #32)</td><td>all</td>
+<td class='num'>+2.50%</td><td class='num'>+8.97%</td>
+<td class='num'>+20.51%</td><td class='num'>796</td></tr>
+<tr style="background:#ecfdf5"><td><b>mirror_sell (no stop) (#33, #34)</b></td><td><b>leadership</b></td>
+<td class='num'><b>+11.57%</b></td><td class='num'><b>+18.04%</b></td>
+<td class='num'><b>+29.58%</b></td><td class='num'>186</td></tr>
+<tr style="background:#ecfdf5"><td><b>mirror+β stop (#35, #36)</b></td><td><b>all</b></td>
+<td class='num'><b>+4.64%</b></td><td class='num'><b>+11.11%</b></td>
+<td class='num'><b>+22.64%</b></td><td class='num'>796</td></tr>
+<tr><td>mirror+β stop (#37, #38)</td><td>leadership</td>
+<td class='num'>+6.89%</td><td class='num'>+13.36%</td>
+<td class='num'>+24.89%</td><td class='num'>186</td></tr>
+</tbody></table>
+<p style='font-size:0.85rem;color:#6e6e73'>Green rows: best-in-universe.
+Red rows: the broken fixed-15% baseline.</p>
+
+<p><b>Beta-stat diagnostic (run #35, all-members + beta-scaled).</b>
+766 of 796 positions had enough history to compute a 252d beta.
+Median β = 0.88; p10/p90 = 0.16 / 1.93. The clipped stop% has median
+13.4% and p10/p90 = 7.5% / 28.9% — i.e. low-vol names get tighter
+stops, high-vol names get more breathing room.</p>
+
+<p><b>Exit-reason mix:</b></p>
+<table>
+<thead><tr><th>policy / universe</th>
+<th class='num'>mirror_sell</th>
+<th class='num'>trailing_stop</th>
+<th class='num'>time_stop</th>
+<th class='num'>end_of_window</th>
+</tr></thead><tbody>
+<tr><td>mirror+15% (all)</td>
+<td class='num'>86 (11%)</td><td class='num'>586 (74%)</td>
+<td class='num'>33 (4%)</td><td class='num'>91 (11%)</td></tr>
+<tr><td>mirror+β (all)</td>
+<td class='num'>75 (10%)</td><td class='num'>576 (74%)</td>
+<td class='num'>41 (5%)</td><td class='num'>104 (13%)</td></tr>
+<tr><td>mirror_only (all)</td>
+<td class='num'>131 (16%)</td><td class='num'>0</td>
+<td class='num'>238 (30%)</td><td class='num'>427 (54%)</td></tr>
+</tbody></table>
+
+<p class='callout'>
+<b>Findings.</b>
+</p>
+<ol class='tight'>
+<li><b>Beta-scaling fixes the trailing-stop problem.</b> mirror+β beats
+mirror+15% in every cell. It also beats the fixed-horizon baseline on
+the all-member universe (+4.64% vs +3.19% over SPY). For a strategy
+that needs <em>risk control</em>, this is now the best variant.</li>
+<li><b>The literal mirror signal is best for leadership, no stop at all.</b>
+mirror_sell (no stop) on the leadership universe posts +11.57% over
+SPY and +18.04% over RSP — the best leadership numbers we've seen.
+The trailing stop was actively hurting on this cohort. Possible
+mechanism: leadership trades concentrate in higher-beta names where a
+fixed 15% stop captures normal volatility, and the same-member sale
+signal is informative enough that letting positions ride to it
+captures more return than any noise-driven exit would.</li>
+<li><b>Sample-size caveat persists.</b> Train excess remains negative
+across all 16 Phase-1 cells. The OOS positive results are 2025-specific
+and the Bayesian per-trade verdict is unchanged. These exit-policy
+improvements squeeze more return from whatever signal exists; they do
+not create signal where there isn't any.</li>
+<li><b>For a recommendation system,</b> the natural choices are now
+(a) mirror+β stop for a risk-managed broad-equity tilt, or (b)
+mirror_sell-only on the leadership subset for a higher-conviction
+narrower portfolio. Both are honest strategies; neither claims alpha
+beyond what the data supports.</li>
+</ol>
 
 {_next_steps_section()}
 

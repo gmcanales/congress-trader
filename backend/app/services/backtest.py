@@ -382,7 +382,12 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                            within-sector picking skill rather than sector tilt.
                            Trades whose ticker has no GICS sector are excluded.
     """
-    if exit_policy == "mirror_sell_with_trailing_stop":
+    MIRROR_POLICIES = {
+        "mirror_sell":                          "none",
+        "mirror_sell_with_trailing_stop":       "fixed",
+        "mirror_sell_with_beta_trailing_stop":  "beta_scaled",
+    }
+    if exit_policy in MIRROR_POLICIES:
         return _rules_backtest_mirror(
             start, end,
             min_members=min_members, date_field=date_field,
@@ -390,6 +395,8 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             benchmark_mode=benchmark_mode,
             trailing_stop_pct=trailing_stop_pct,
             time_stop_days=time_stop_days,
+            exit_policy=exit_policy,
+            trailing_stop_mode=MIRROR_POLICIES[exit_policy],
         )
     elif exit_policy != "fixed_horizon":
         return {"error": f"unknown exit_policy: {exit_policy!r}"}
@@ -556,12 +563,39 @@ def _find_first_exit_idx(price_window: pd.Series, trailing_stop_pct: float) -> i
     return None
 
 
+def _compute_beta(stock_series: pd.Series, market_series: pd.Series,
+                  entry_date: date, lookback: int = 252) -> float | None:
+    """Trailing-window OLS beta of stock returns vs market (SPY) returns,
+    computed over the last `lookback` trading days strictly before
+    `entry_date`. Returns None if there isn't enough overlap to estimate."""
+    if stock_series is None or market_series is None:
+        return None
+    end_ts = pd.Timestamp(entry_date)
+    pos = stock_series.index.searchsorted(end_ts, side="left")
+    if pos < lookback + 2:
+        return None
+    window_idx = stock_series.index[pos - lookback - 1:pos]
+    stk = stock_series.reindex(window_idx).pct_change().dropna()
+    mkt = market_series.reindex(window_idx).pct_change().reindex(stk.index).dropna()
+    aligned = pd.concat([stk, mkt], axis=1).dropna()
+    if len(aligned) < lookback // 2:
+        return None
+    s = aligned.iloc[:, 0]
+    m = aligned.iloc[:, 1]
+    var_m = float(m.var())
+    if var_m <= 0:
+        return None
+    return float(s.cov(m) / var_m)
+
+
 def _rules_backtest_mirror(start: date, end: date, *,
                             min_members: int, date_field: str,
                             benchmark: str, leadership_only: bool,
                             benchmark_mode: str,
                             trailing_stop_pct: float,
-                            time_stop_days: int) -> dict:
+                            time_stop_days: int,
+                            exit_policy: str,
+                            trailing_stop_mode: str) -> dict:
     """Per-(member, ticker, entry) position simulator with signal-driven
     exits. See `rules_backtest` for the public interface and the precise
     exit-priority semantics."""
@@ -632,6 +666,8 @@ def _rules_backtest_mirror(start: date, end: date, *,
         # Price fetch: tickers + sector ETFs (if needed) + the calendar
         # anchor (SPY). Calendar extends well past `end` so positions
         # opened late can mature against their full time_stop window.
+        # If using beta-scaled trailing stops we also need ~1 year of
+        # history BEFORE `start` to estimate beta on the earliest entries.
         tickers_set = set(tickers)
         sector_lookup: dict[str, str] = {}
         if benchmark_mode == "sector":
@@ -639,10 +675,14 @@ def _rules_backtest_mirror(start: date, end: date, *,
             extra = set(sector_lookup.values())
         else:
             extra = set()
-        # Buffer long enough to cover time_stop_days + slack
+        if trailing_stop_mode == "beta_scaled":
+            extra = extra | {"SPY"}  # beta is always vs SPY by convention
+            fetch_start = start - timedelta(days=400)  # ~252 trading days
+        else:
+            fetch_start = start
         buffer_days = int(time_stop_days * 1.6) + 30
         ensure_prices(tickers_set | extra | {benchmark},
-                      start, end + timedelta(days=buffer_days))
+                      fetch_start, end + timedelta(days=buffer_days))
 
         cal_series = _close_series(db, benchmark)
         if cal_series is None:
@@ -677,10 +717,16 @@ def _rules_backtest_mirror(start: date, end: date, *,
         sec_port = pd.Series(0.0, index=calendar)
         n_open_sec = pd.Series(0, index=calendar)
 
+        # SPY series for beta computation (lookback-aware). Always
+        # available because we requested it in ensure_prices above.
+        spy_series_full = _close_series(db, "SPY") if trailing_stop_mode == "beta_scaled" else None
+
         positions = 0
         skipped_no_sector = 0
         exit_reasons = {"mirror_sell": 0, "trailing_stop": 0,
                         "time_stop": 0, "end_of_window": 0}
+        beta_samples: list[float] = []   # diagnostic — distribution of betas used
+        stop_pct_samples: list[float] = []
 
         for r in events:
             sector_etf = None
@@ -709,13 +755,26 @@ def _rules_backtest_mirror(start: date, end: date, *,
                 if mirror_idx < len(calendar):
                     cand.append((mirror_idx, "mirror_sell"))
 
-            # (b) trailing stop, scanned over [open_idx, cal_end].
-            ser = closes(r.ticker)
-            if ser is not None:
-                price_window = ser.reindex(calendar).iloc[open_idx:]
-                ts_offset = _find_first_exit_idx(price_window, trailing_stop_pct)
-                if ts_offset is not None:
-                    cand.append((open_idx + ts_offset, "trailing_stop"))
+            # (b) trailing stop, scanned over [open_idx, cal_end]. Skipped
+            # entirely for the mirror_sell-only policy.
+            if trailing_stop_mode != "none":
+                ser = closes(r.ticker)
+                if ser is not None:
+                    if trailing_stop_mode == "beta_scaled":
+                        beta = _compute_beta(ser, spy_series_full, r.event_date)
+                        # Clip to [0.5, 3.0] so defensive names don't get a
+                        # 7% stop and ultra-high-beta names don't get a 45%
+                        # stop; fall back to 1.0 when beta can't be estimated.
+                        scale = 1.0 if beta is None else max(0.5, min(beta, 3.0))
+                        eff_stop = trailing_stop_pct * scale
+                        beta_samples.append(beta if beta is not None else float("nan"))
+                    else:
+                        eff_stop = trailing_stop_pct
+                    stop_pct_samples.append(eff_stop)
+                    price_window = ser.reindex(calendar).iloc[open_idx:]
+                    ts_offset = _find_first_exit_idx(price_window, eff_stop)
+                    if ts_offset is not None:
+                        cand.append((open_idx + ts_offset, "trailing_stop"))
 
             # (c) time stop fallback.
             ts_idx = open_idx + time_stop_days
@@ -755,19 +814,42 @@ def _rules_backtest_mirror(start: date, end: date, *,
         bench_total = float(bench_nav.iloc[end_idx] - 1) if len(bench_nav) else 0.0
         invested_days = int((n_open > 0).sum())
 
+        beta_stats = None
+        if beta_samples:
+            arr = np.array([b for b in beta_samples if not np.isnan(b)], dtype=float)
+            if len(arr):
+                beta_stats = {
+                    "n": int(len(arr)),
+                    "median": float(np.median(arr)),
+                    "p10": float(np.percentile(arr, 10)),
+                    "p90": float(np.percentile(arr, 90)),
+                }
+        stop_pct_stats = None
+        if stop_pct_samples:
+            arr = np.array(stop_pct_samples, dtype=float)
+            stop_pct_stats = {
+                "n": int(len(arr)),
+                "median": float(np.median(arr)),
+                "p10": float(np.percentile(arr, 10)),
+                "p90": float(np.percentile(arr, 90)),
+            }
+
         return {
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "params": {
                 "min_members": min_members, "date_field": date_field,
                 "benchmark": benchmark, "benchmark_mode": benchmark_mode,
                 "leadership_only": leadership_only,
-                "exit_policy": "mirror_sell_with_trailing_stop",
+                "exit_policy": exit_policy,
+                "trailing_stop_mode": trailing_stop_mode,
                 "trailing_stop_pct": trailing_stop_pct,
                 "time_stop_days": time_stop_days,
             },
             "positions_opened": positions,
             "events_skipped_no_sector": skipped_no_sector,
             "exit_reasons": exit_reasons,
+            "beta_stats": beta_stats,
+            "stop_pct_stats": stop_pct_stats,
             "days_invested": invested_days,
             "trading_days": len(calendar),
             "strategy_return": round(strat_total, 4),
