@@ -130,6 +130,25 @@ class PriceBar(Base):
     )
 
 
+class TickerInfo(Base):
+    """Ticker → GICS sector / industry mapping for sector-neutral analysis.
+
+    Populated by `backend/ingest_sectors.py` from yfinance. The `sector` field
+    follows GICS top-level labels (Information Technology, Health Care,
+    Financials, …) and is what the backtest engine joins to its
+    GICS → SPDR sector-ETF map (XLK, XLV, XLF, …) when running with
+    `benchmark_mode="sector"`.
+    """
+    __tablename__ = "tickers"
+
+    symbol = Column(String, primary_key=True)
+    sector = Column(String, index=True)
+    industry = Column(String)
+    market_cap = Column(Float)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    source = Column(String)  # e.g. "yfinance"
+
+
 # ── v2 leadership tables ────────────────────────────────────────────────────
 
 class Committee(Base):

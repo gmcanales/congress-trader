@@ -240,6 +240,8 @@ def _runs_table(runs: list[dict]) -> str:
         sel = sc.get("selected_params", {})
         anchor = p.get("date_field") or ""
         bench = sc.get("benchmark") or p.get("benchmark") or "SPY"
+        bench_mode = sc.get("benchmark_mode") or p.get("benchmark_mode") or "ticker"
+        bench_label = bench if bench_mode == "ticker" else f"sector ({bench} cal.)"
         leadership = bool(sc.get("leadership_only") or p.get("leadership_only"))
         tradeable = anchor == "filing_date"
         tag = ("<span style='color:#047857;font-weight:600'>tradeable</span>"
@@ -253,7 +255,7 @@ def _runs_table(runs: list[dict]) -> str:
             f"<td>{tag}</td>"
             f"<td>{lead_tag}</td>"
             f"<td><code>{html.escape(anchor)}</code></td>"
-            f"<td><code>{html.escape(bench)}</code></td>"
+            f"<td><code>{html.escape(bench_label)}</code></td>"
             f"<td>{html.escape(p.get('train_start',''))} → {html.escape(p.get('train_end',''))}</td>"
             f"<td>{html.escape(p.get('test_start',''))} → {html.escape(p.get('test_end',''))}</td>"
             f"<td><code>{p.get('hold_days')}</code></td>"
@@ -694,6 +696,64 @@ What our data <em>can</em> say:
     appointments and are not subject to the 2025 trifecta cohort
     change).</li>
 </ul>
+
+<h3 id="sector-neutral">Sector-neutral check (run #17)</h3>
+<p>
+To isolate sector tilt from within-sector picking, run <b>#17</b> re-runs
+the same leadership / filing_date / hold=63 / min=1 configuration but
+swaps the benchmark from a single ticker (SPY/RSP) to an
+<em>equal-weight portfolio of the GICS sector SPDR ETFs corresponding
+to the strategy's currently-open positions</em>. Trades on tickers
+without sector data (48 of 186 OOS, ~26%) are excluded. Sectors come
+from yfinance and are mapped to SPDR ETFs (XLK, XLV, XLF, XLY, XLI,
+XLP, XLE, XLU, XLRE, XLB, XLC).
+</p>
+<table>
+<thead><tr><th>Benchmark</th>
+<th class='num'>OOS strategy</th>
+<th class='num'>OOS benchmark</th>
+<th class='num'>OOS excess</th>
+<th class='num'>Train excess</th>
+</tr></thead><tbody>
+<tr><td>SPY (#11)</td>
+<td class='num'>+29.84%</td><td class='num'>+17.90%</td>
+<td class='num'>+11.93%</td><td class='num'>−42.10%</td></tr>
+<tr><td>RSP (#12)</td>
+<td class='num'>+29.84%</td><td class='num'>+14.99%</td>
+<td class='num'>+14.85%</td><td class='num'>−27.24%</td></tr>
+<tr><td><b>Sector-mix (#17)</b></td>
+<td class='num'><b>+33.04%</b></td>
+<td class='num'><b>+20.54%</b></td>
+<td class='num'><b>+12.50%</b></td>
+<td class='num'><b>−27.09%</b></td></tr>
+</tbody></table>
+<ul class="tight">
+<li><b>Sector benchmark beat RSP by 5.6pp in 2025.</b> The strategy's
+    sector exposure tilted toward sectors that outperformed the broad
+    market — consistent with the trifecta-driven cohort holding
+    tech/financials/energy. So roughly 5-6pp of the RSP-relative excess
+    is attributable to "leaders picked the right sectors" rather than
+    "leaders picked good stocks within sectors."</li>
+<li><b>Residual excess ~+12.50% survives sector-neutralization.</b>
+    Most of the OOS edge is still there once sector tilt is stripped
+    out. This is the within-sector picking residual.</li>
+<li><b>Train remains strongly negative (−27.09%) even sector-neutral.</b>
+    The full magnitude of the train/test sign flip (~40pp) survives
+    sector-neutralization, almost unchanged from the RSP comparison
+    (−27.24%). <em>Sector tilt explains some of why R-cohort 2025
+    OOS won big, but it does not explain why the same configuration
+    was losing the entire training window.</em> That sign flip is the
+    cohort-change confound — different people trading different
+    portfolios in different chambers — not a sector-rotation
+    effect.</li>
+</ul>
+<p>
+Verdict: sector tilt is real and worth ~5-6pp of the OOS excess
+against the cap-weighted SPY (about a third of the RSP-relative
+edge), but it doesn't dissolve the headline result and it doesn't
+rescue the in-sample relationship. The dominant unresolved confound
+remains the 2025 trifecta cohort change, not market sector behaviour.
+</p>
 
 {_assumptions_section()}
 

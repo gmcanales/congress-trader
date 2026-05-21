@@ -34,6 +34,29 @@ SELL_TYPES = ("sale", "sale_partial")
 # once chair tenure is ingested in v2 step 3, committee chairs.
 LEADERSHIP_ROLE_TYPES = ("leadership", "chair")
 
+# GICS top-level sector → SPDR sector ETF used for sector-neutral excess return.
+# These are the well-known SPDR sector funds that closely track GICS sectors.
+GICS_TO_ETF = {
+    "Information Technology": "XLK",
+    "Technology":              "XLK",   # yfinance sometimes uses the shorter label
+    "Health Care":             "XLV",
+    "Healthcare":              "XLV",
+    "Financials":              "XLF",
+    "Financial Services":      "XLF",
+    "Communication Services":  "XLC",
+    "Consumer Discretionary":  "XLY",
+    "Consumer Cyclical":       "XLY",
+    "Industrials":             "XLI",
+    "Consumer Staples":        "XLP",
+    "Consumer Defensive":      "XLP",
+    "Energy":                  "XLE",
+    "Utilities":               "XLU",
+    "Real Estate":             "XLRE",
+    "Materials":               "XLB",
+    "Basic Materials":         "XLB",
+}
+ALL_SECTOR_ETFS = sorted(set(GICS_TO_ETF.values()))
+
 
 def _leadership_exists_filter():
     """SQLAlchemy EXISTS subquery: only trades where the member held a
@@ -51,6 +74,18 @@ def _leadership_exists_filter():
         .where(t.transaction_date <= func.coalesce(p.end_date, func.current_date()))
         .exists()
     )
+
+
+def _load_sector_etf_lookup(db) -> dict[str, str]:
+    """Return {stock_symbol: sector_etf_symbol} for every ticker we have
+    sector data on. Tickers missing from this dict have no GICS sector and
+    will be excluded from sector-neutral analysis."""
+    out: dict[str, str] = {}
+    for ti in db.scalars(select(models.TickerInfo)).all():
+        etf = GICS_TO_ETF.get(ti.sector or "")
+        if etf:
+            out[ti.symbol] = etf
+    return out
 
 
 # ── Price data ──────────────────────────────────────────────────────────────
@@ -188,7 +223,8 @@ def _summarize(excess_returns: list[float]) -> dict:
 def event_study(start: date, end: date, date_field: str = "filing_date",
                 horizons: dict | None = None,
                 benchmark: str = DEFAULT_BENCHMARK,
-                leadership_only: bool = False) -> dict:
+                leadership_only: bool = False,
+                benchmark_mode: str = "ticker") -> dict:
     """Mean excess return after congressional buys vs sells, by horizon & chamber.
 
     `date_field` chooses the event anchor: 'filing_date' (the public date — for
@@ -197,6 +233,11 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
     cap-weighted; RSP is the equal-weight S&P 500 alternative).
     `leadership_only` restricts events to trades made while the member held
     a leadership or committee-chair position (theory-driven cut per Wei & Zhou).
+    `benchmark_mode`:
+      'ticker'  (default) — excess vs the single `benchmark` ticker (SPY/RSP)
+      'sector'            — excess vs the stock's GICS sector SPDR ETF
+                            (XLK/XLV/XLF/…); trades without sector data are
+                            excluded with a count.
     """
     horizons = horizons or HORIZONS
     db = SessionLocal()
@@ -222,7 +263,14 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             q = q.filter(_leadership_exists_filter())
         rows = q.all()
         tickers = {r.ticker for r in rows}
-        ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
+
+        sector_lookup: dict[str, str] = {}
+        if benchmark_mode == "sector":
+            sector_lookup = _load_sector_etf_lookup(db)
+            needed_etfs = {sector_lookup[t] for t in tickers if t in sector_lookup}
+            ensure_prices(tickers | needed_etfs | {benchmark}, start, end + timedelta(days=130))
+        else:
+            ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
 
         spy = _close_series(db, benchmark)
         series_cache: dict[str, pd.Series | None] = {}
@@ -239,15 +287,29 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
                 excess[side][h] = {"all": [], "house": [], "senate": []}
 
         missing_price = 0
+        missing_sector = 0
         for r in rows:
             ser = series(r.ticker)
             if ser is None:
                 missing_price += 1
                 continue
+            # Pick the benchmark series for this trade — global ticker, or this
+            # ticker's GICS sector ETF in sector mode.
+            if benchmark_mode == "sector":
+                etf = sector_lookup.get(r.ticker)
+                if etf is None:
+                    missing_sector += 1
+                    continue
+                bench_ser = series(etf)
+                if bench_ser is None:
+                    missing_price += 1
+                    continue
+            else:
+                bench_ser = spy
             side = "sell" if r.transaction_type in SELL_TYPES else "buy"
             for hname, hdays in horizons.items():
                 stock = _forward_return(ser, r.event_date, hdays)
-                bench = _forward_return(spy, r.event_date, hdays)
+                bench = _forward_return(bench_ser, r.event_date, hdays)
                 if stock is None or bench is None:
                     continue
                 x = stock - bench
@@ -266,9 +328,11 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "date_field": date_field,
             "benchmark": benchmark,
+            "benchmark_mode": benchmark_mode,
             "leadership_only": leadership_only,
             "events_total": len(rows),
             "events_missing_price": missing_price,
+            "events_missing_sector": missing_sector,
             "results": result,
         }
     finally:
@@ -280,13 +344,25 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
 def rules_backtest(start: date, end: date, horizon_days: int = 63,
                    min_members: int = 1, date_field: str = "filing_date",
                    benchmark: str = DEFAULT_BENCHMARK,
-                   leadership_only: bool = False) -> dict:
-    """Simulate an equal-weight 'follow the buys' portfolio vs SPY buy-and-hold.
+                   leadership_only: bool = False,
+                   benchmark_mode: str = "ticker") -> dict:
+    """Simulate an equal-weight 'follow the buys' portfolio vs a benchmark.
 
     Each qualifying purchase opens a position the trading day after its event
     date, held `horizon_days`. With min_members>1, only tickers bought by that
     many distinct members within a trailing 30-day window qualify (conviction
-    filter). `date_field` is the event anchor (filing_date or transaction_date)."""
+    filter). `date_field` is the event anchor (filing_date or transaction_date).
+
+    `benchmark_mode`:
+      'ticker' (default) — `benchmark_return` is buy-and-hold of the single
+                           `benchmark` ticker (SPY/RSP).
+      'sector'           — `benchmark_return` is the NAV of an equal-weight
+                           shadow portfolio that, each day, holds the SPDR
+                           sector ETF for every currently-open position. This
+                           neutralizes sector exposure, so the residual is
+                           within-sector picking skill rather than sector tilt.
+                           Trades whose ticker has no GICS sector are excluded.
+    """
     db = SessionLocal()
     try:
         date_col = getattr(models.Transaction, date_field)
@@ -309,7 +385,14 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             q = q.filter(_leadership_exists_filter())
         rows = q.order_by(date_col).all()
         tickers = {r.ticker for r in rows}
-        ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
+
+        sector_lookup: dict[str, str] = {}
+        if benchmark_mode == "sector":
+            sector_lookup = _load_sector_etf_lookup(db)
+            needed_etfs = set(sector_lookup.values())
+            ensure_prices(tickers | needed_etfs | {benchmark}, start, end + timedelta(days=130))
+        else:
+            ensure_prices(tickers | {benchmark}, start, end + timedelta(days=130))
 
         spy = _close_series(db, benchmark)
         if spy is None:
@@ -350,8 +433,17 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
 
         port = pd.Series(0.0, index=calendar)
         n_open = pd.Series(0, index=calendar)
+        sec_port = pd.Series(0.0, index=calendar)   # parallel shadow: sector ETF returns of currently-held positions
+        n_open_sec = pd.Series(0, index=calendar)
         positions = 0
+        skipped_no_sector = 0
         for r in events:
+            sector_etf = None
+            if benchmark_mode == "sector":
+                sector_etf = sector_lookup.get(r.ticker)
+                if sector_etf is None:
+                    skipped_no_sector += 1
+                    continue
             ret = returns(r.ticker)
             entry_pos = calendar.searchsorted(pd.Timestamp(r.event_date))
             window = calendar[entry_pos + 1: entry_pos + 1 + horizon_days]
@@ -361,32 +453,43 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             day_ret = ret.loc[window]
             port.loc[window] += day_ret.fillna(0.0)
             n_open.loc[window] += day_ret.notna().astype(int)
+            if sector_etf is not None:
+                etf_ret = returns(sector_etf).loc[window]
+                sec_port.loc[window] += etf_ret.fillna(0.0)
+                n_open_sec.loc[window] += etf_ret.notna().astype(int)
 
         daily = (port / n_open.replace(0, np.nan)).fillna(0.0)
         nav = (1 + daily).cumprod()
-        spy_nav = (1 + spy.pct_change().fillna(0.0)).cumprod()
+
+        if benchmark_mode == "sector":
+            sec_daily = (sec_port / n_open_sec.replace(0, np.nan)).fillna(0.0)
+            bench_nav = (1 + sec_daily).cumprod()
+        else:
+            bench_nav = (1 + spy.pct_change().fillna(0.0)).cumprod()
 
         strat_total = float(nav.iloc[-1] - 1) if len(nav) else 0.0
-        spy_total = float(spy_nav.iloc[-1] - 1) if len(spy_nav) else 0.0
+        bench_total = float(bench_nav.iloc[-1] - 1) if len(bench_nav) else 0.0
         invested_days = int((n_open > 0).sum())
 
         return {
             "window": {"start": start.isoformat(), "end": end.isoformat()},
             "params": {"horizon_days": horizon_days, "min_members": min_members,
                        "date_field": date_field, "benchmark": benchmark,
+                       "benchmark_mode": benchmark_mode,
                        "leadership_only": leadership_only},
             "positions_opened": positions,
+            "events_skipped_no_sector": skipped_no_sector,
             "days_invested": invested_days,
             "trading_days": len(calendar),
             "strategy_return": round(strat_total, 4),
-            "benchmark_return": round(spy_total, 4),
-            "excess_return": round(strat_total - spy_total, 4),
+            "benchmark_return": round(bench_total, 4),
+            "excess_return": round(strat_total - bench_total, 4),
             "max_concurrent_positions": int(n_open.max()) if len(n_open) else 0,
             "nav_curve": [
                 {"date": d.date().isoformat(),
                  "strategy": round(float(s), 4),
                  "benchmark": round(float(b), 4)}
-                for d, s, b in zip(calendar, nav, spy_nav)
+                for d, s, b in zip(calendar, nav, bench_nav)
             ],
         }
     finally:
@@ -410,15 +513,18 @@ def train_test_analysis(train_start: date, train_end: date,
                         param_grid: list | None = None,
                         horizons: dict | None = None,
                         benchmark: str = DEFAULT_BENCHMARK,
-                        leadership_only: bool = False) -> dict:
+                        leadership_only: bool = False,
+                        benchmark_mode: str = "ticker") -> dict:
     """Grid-search the strategy on the training years, then evaluate the single
     best configuration once on the held-out test year. The test period is
     touched exactly once, with parameters locked from training."""
     param_grid = param_grid or PARAM_GRID
     es_train = event_study(train_start, train_end, date_field, horizons,
-                           benchmark=benchmark, leadership_only=leadership_only)
+                           benchmark=benchmark, leadership_only=leadership_only,
+                           benchmark_mode=benchmark_mode)
     es_test = event_study(test_start, test_end, date_field, horizons,
-                          benchmark=benchmark, leadership_only=leadership_only)
+                          benchmark=benchmark, leadership_only=leadership_only,
+                          benchmark_mode=benchmark_mode)
 
     grid = []
     for params in param_grid:
@@ -427,6 +533,7 @@ def train_test_analysis(train_start: date, train_end: date,
                                               date_field=date_field,
                                               benchmark=benchmark,
                                               leadership_only=leadership_only,
+                                              benchmark_mode=benchmark_mode,
                                               **params)})
 
     best = max(grid, key=lambda g: g["result"].get("excess_return", -1e9))
@@ -435,6 +542,7 @@ def train_test_analysis(train_start: date, train_end: date,
                                    date_field=date_field,
                                    benchmark=benchmark,
                                    leadership_only=leadership_only,
+                                   benchmark_mode=benchmark_mode,
                                    **best["params"])
 
     # strip NAV curves from the grid comparison to keep the payload small
@@ -447,6 +555,7 @@ def train_test_analysis(train_start: date, train_end: date,
     return {
         "date_field": date_field,
         "benchmark": benchmark,
+        "benchmark_mode": benchmark_mode,
         "leadership_only": leadership_only,
         "train_window": {"start": train_start.isoformat(), "end": train_end.isoformat()},
         "test_window": {"start": test_start.isoformat(), "end": test_end.isoformat()},

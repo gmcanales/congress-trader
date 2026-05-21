@@ -66,6 +66,8 @@ def main() -> None:
                    help="benchmark ticker for excess return (SPY cap-weight, RSP equal-weight)")
     p.add_argument("--leadership-only", action="store_true",
                    help="restrict to trades made while the member held a leadership/chair position")
+    p.add_argument("--benchmark-mode", choices=["ticker", "sector"], default="ticker",
+                   help="ticker: excess vs the single --benchmark; sector: excess vs each stock's GICS sector ETF")
     p.add_argument("--output", help="path to write the full result JSON")
     args = p.parse_args()
 
@@ -74,7 +76,7 @@ def main() -> None:
                   for h, m in itertools.product(args.hold_days, args.min_members)]
 
     print(f"Analysis  anchor={args.date_field}  benchmark={args.benchmark}"
-          f"  leadership_only={args.leadership_only}")
+          f"  bench_mode={args.benchmark_mode}  leadership_only={args.leadership_only}")
     print(f"  train {args.train_start}..{args.train_end}"
           f"  |  test {args.test_start}..{args.test_end}")
     print(f"  grid: {len(param_grid)} configs  |  event horizons: {args.event_horizons}")
@@ -83,6 +85,7 @@ def main() -> None:
         args.train_start, args.train_end, args.test_start, args.test_end,
         date_field=args.date_field, param_grid=param_grid, horizons=horizons,
         benchmark=args.benchmark, leadership_only=args.leadership_only,
+        benchmark_mode=args.benchmark_mode,
     )
 
     _print_event_study(result["event_study"]["train"], "TRAIN")

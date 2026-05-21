@@ -29,6 +29,7 @@ class AnalyzeRequest(BaseModel):
     min_members: list[int] = [1, 2, 3]
     benchmark: str = "SPY"  # ticker excess returns are measured against (SPY cap-weight, RSP equal-weight)
     leadership_only: bool = False  # restrict to trades made while member held a leadership/chair position
+    benchmark_mode: str = "ticker"  # "ticker" = single benchmark; "sector" = each stock vs its GICS sector ETF
 
 
 def _extract_scores(result: dict) -> dict:
@@ -38,6 +39,7 @@ def _extract_scores(result: dict) -> dict:
     return {
         "date_field": result["date_field"],
         "benchmark": result.get("benchmark", "SPY"),
+        "benchmark_mode": result.get("benchmark_mode", "ticker"),
         "leadership_only": result.get("leadership_only", False),
         "selected_params": result["selected_params"],
         "train_excess": st["excess_return"],
@@ -62,6 +64,7 @@ def _run(run_id: int) -> None:
             date_field=p["date_field"], param_grid=grid, horizons=horizons,
             benchmark=p.get("benchmark", "SPY"),
             leadership_only=p.get("leadership_only", False),
+            benchmark_mode=p.get("benchmark_mode", "ticker"),
         )
         run.full_results = result
         run.scores = _extract_scores(result)
@@ -111,6 +114,7 @@ def run_model(req: AnalyzeRequest, background_tasks: BackgroundTasks,
         "min_members": req.min_members,
         "benchmark": req.benchmark,
         "leadership_only": req.leadership_only,
+        "benchmark_mode": req.benchmark_mode,
     }
     run = models.AnalysisRun(
         dataset_id=req.dataset_id, tool="train_test_analysis",
