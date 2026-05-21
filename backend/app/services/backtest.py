@@ -345,13 +345,32 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                    min_members: int = 1, date_field: str = "filing_date",
                    benchmark: str = DEFAULT_BENCHMARK,
                    leadership_only: bool = False,
-                   benchmark_mode: str = "ticker") -> dict:
+                   benchmark_mode: str = "ticker",
+                   exit_policy: str = "fixed_horizon",
+                   trailing_stop_pct: float = 0.15,
+                   time_stop_days: int = 252) -> dict:
     """Simulate an equal-weight 'follow the buys' portfolio vs a benchmark.
 
     Each qualifying purchase opens a position the trading day after its event
-    date, held `horizon_days`. With min_members>1, only tickers bought by that
-    many distinct members within a trailing 30-day window qualify (conviction
-    filter). `date_field` is the event anchor (filing_date or transaction_date).
+    date. With min_members>1, only tickers bought by that many distinct
+    members within a trailing 30-day window qualify (conviction filter).
+    `date_field` is the event anchor (filing_date or transaction_date).
+
+    `exit_policy`:
+      'fixed_horizon' (default) — every position closes after `horizon_days`
+                                  trading days. Event-study-shaped baseline.
+      'mirror_sell_with_trailing_stop' — per-(member, ticker, entry) position
+                                  tracking. Closes on the earliest of:
+                                    (a) the same member discloses a sale of
+                                        the same ticker (mirror exit, on the
+                                        sale's filing_date);
+                                    (b) the stock falls `trailing_stop_pct`
+                                        from its trailing peak since entry;
+                                    (c) `time_stop_days` trading days elapse
+                                        (fallback when the member never
+                                        sells in the data);
+                                    (d) end of the simulation calendar.
+                                  Closer to a literal-follower strategy.
 
     `benchmark_mode`:
       'ticker' (default) — `benchmark_return` is buy-and-hold of the single
@@ -363,6 +382,17 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                            within-sector picking skill rather than sector tilt.
                            Trades whose ticker has no GICS sector are excluded.
     """
+    if exit_policy == "mirror_sell_with_trailing_stop":
+        return _rules_backtest_mirror(
+            start, end,
+            min_members=min_members, date_field=date_field,
+            benchmark=benchmark, leadership_only=leadership_only,
+            benchmark_mode=benchmark_mode,
+            trailing_stop_pct=trailing_stop_pct,
+            time_stop_days=time_stop_days,
+        )
+    elif exit_policy != "fixed_horizon":
+        return {"error": f"unknown exit_policy: {exit_policy!r}"}
     db = SessionLocal()
     try:
         date_col = getattr(models.Transaction, date_field)
@@ -467,8 +497,14 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
         else:
             bench_nav = (1 + spy.pct_change().fillna(0.0)).cumprod()
 
-        strat_total = float(nav.iloc[-1] - 1) if len(nav) else 0.0
-        bench_total = float(bench_nav.iloc[-1] - 1) if len(bench_nav) else 0.0
+        # Measure strategy + benchmark at the LAST calendar index on or before
+        # `end` — the standard mark-to-market at end-of-period. Reporting at
+        # the calendar tail (which extends past `end` to let late positions
+        # mature) would systematically inflate benchmark drift relative to a
+        # strategy that goes flat after positions close.
+        end_idx = max(0, calendar.searchsorted(pd.Timestamp(end), side="right") - 1)
+        strat_total = float(nav.iloc[end_idx] - 1) if len(nav) else 0.0
+        bench_total = float(bench_nav.iloc[end_idx] - 1) if len(bench_nav) else 0.0
         invested_days = int((n_open > 0).sum())
 
         return {
@@ -476,9 +512,262 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             "params": {"horizon_days": horizon_days, "min_members": min_members,
                        "date_field": date_field, "benchmark": benchmark,
                        "benchmark_mode": benchmark_mode,
-                       "leadership_only": leadership_only},
+                       "leadership_only": leadership_only,
+                       "exit_policy": "fixed_horizon"},
             "positions_opened": positions,
             "events_skipped_no_sector": skipped_no_sector,
+            "days_invested": invested_days,
+            "trading_days": len(calendar),
+            "strategy_return": round(strat_total, 4),
+            "benchmark_return": round(bench_total, 4),
+            "excess_return": round(strat_total - bench_total, 4),
+            "max_concurrent_positions": int(n_open.max()) if len(n_open) else 0,
+            "nav_curve": [
+                {"date": d.date().isoformat(),
+                 "strategy": round(float(s), 4),
+                 "benchmark": round(float(b), 4)}
+                for d, s, b in zip(calendar, nav, bench_nav)
+            ],
+        }
+    finally:
+        db.close()
+
+
+# ── Mirror-sell + trailing-stop rules backtest ──────────────────────────────
+
+def _find_first_exit_idx(price_window: pd.Series, trailing_stop_pct: float) -> int | None:
+    """Index into `price_window` (0 = day after entry) at which the trailing
+    stop fires. Returns None if it never fires within the window."""
+    if len(price_window) == 0:
+        return None
+    arr = price_window.values
+    # Running peak from entry forward. Trailing stop fires the first day
+    # the price closes ≥ stop_pct below the running peak.
+    peak = arr[0]
+    threshold = peak * (1.0 - trailing_stop_pct)
+    for i in range(len(arr)):
+        if pd.isna(arr[i]):
+            continue
+        if arr[i] > peak:
+            peak = arr[i]
+            threshold = peak * (1.0 - trailing_stop_pct)
+        if arr[i] <= threshold:
+            return i
+    return None
+
+
+def _rules_backtest_mirror(start: date, end: date, *,
+                            min_members: int, date_field: str,
+                            benchmark: str, leadership_only: bool,
+                            benchmark_mode: str,
+                            trailing_stop_pct: float,
+                            time_stop_days: int) -> dict:
+    """Per-(member, ticker, entry) position simulator with signal-driven
+    exits. See `rules_backtest` for the public interface and the precise
+    exit-priority semantics."""
+    db = SessionLocal()
+    try:
+        date_col = getattr(models.Transaction, date_field)
+
+        # Entries: all purchases in the window matching the universe filter.
+        eq = (db.query(
+                models.Transaction.ticker.label("ticker"),
+                date_col.label("event_date"),
+                models.Transaction.member_id.label("member_id"),
+            )
+            .filter(
+                models.Transaction.ticker.isnot(None),
+                models.Transaction.ticker != "",
+                date_col.isnot(None),
+                date_col >= start,
+                date_col <= end,
+                models.Transaction.transaction_type == "purchase",
+            ))
+        if leadership_only:
+            eq = eq.filter(_leadership_exists_filter())
+        entries = eq.order_by(date_col).all()
+
+        # Sales: every sale we might need to mirror — by any member who
+        # bought in our window, on any ticker they bought, at any time.
+        # Not restricted to the window because a sale could close a position
+        # that opened late in the window.
+        member_ids = list({r.member_id for r in entries})
+        tickers = list({r.ticker for r in entries})
+        sales_rows = []
+        if member_ids and tickers:
+            sales_rows = (db.query(
+                    models.Transaction.ticker,
+                    date_col,
+                    models.Transaction.member_id,
+                )
+                .filter(
+                    models.Transaction.member_id.in_(member_ids),
+                    models.Transaction.ticker.in_(tickers),
+                    date_col.isnot(None),
+                    models.Transaction.transaction_type.in_(SELL_TYPES),
+                )
+                .order_by(date_col).all())
+
+        # Build a lookup: (member_id, ticker) -> sorted list of sale dates.
+        sales_by_key: dict[tuple, list[date]] = {}
+        for s_ticker, s_date, s_member in sales_rows:
+            sales_by_key.setdefault((s_member, s_ticker), []).append(s_date)
+
+        # Conviction filter (same logic as fixed_horizon).
+        events = entries
+        if min_members > 1:
+            by_ticker: dict[str, list] = {}
+            for r in entries:
+                by_ticker.setdefault(r.ticker, []).append(r)
+            kept = []
+            for r in entries:
+                members = {
+                    o.member_id for o in by_ticker[r.ticker]
+                    if 0 <= (r.event_date - o.event_date).days <= 30
+                }
+                if len(members) >= min_members:
+                    kept.append(r)
+            events = kept
+
+        # Price fetch: tickers + sector ETFs (if needed) + the calendar
+        # anchor (SPY). Calendar extends well past `end` so positions
+        # opened late can mature against their full time_stop window.
+        tickers_set = set(tickers)
+        sector_lookup: dict[str, str] = {}
+        if benchmark_mode == "sector":
+            sector_lookup = _load_sector_etf_lookup(db)
+            extra = set(sector_lookup.values())
+        else:
+            extra = set()
+        # Buffer long enough to cover time_stop_days + slack
+        buffer_days = int(time_stop_days * 1.6) + 30
+        ensure_prices(tickers_set | extra | {benchmark},
+                      start, end + timedelta(days=buffer_days))
+
+        cal_series = _close_series(db, benchmark)
+        if cal_series is None:
+            return {"error": f"no benchmark price data for {benchmark}"}
+        cal_end_ts = pd.Timestamp(end) + timedelta(days=buffer_days)
+        cal_series = cal_series[
+            (cal_series.index >= pd.Timestamp(start)) &
+            (cal_series.index <= cal_end_ts)
+        ]
+        calendar = cal_series.index
+
+        # Per-ticker series caches.
+        close_cache: dict[str, pd.Series | None] = {}
+        ret_cache: dict[str, pd.Series] = {}
+
+        def closes(t: str) -> pd.Series | None:
+            if t not in close_cache:
+                close_cache[t] = _close_series(db, t)
+            return close_cache[t]
+
+        def returns(t: str) -> pd.Series:
+            if t not in ret_cache:
+                ser = closes(t)
+                ret_cache[t] = (
+                    ser.pct_change().reindex(calendar) if ser is not None
+                    else pd.Series(np.nan, index=calendar)
+                )
+            return ret_cache[t]
+
+        port = pd.Series(0.0, index=calendar)
+        n_open = pd.Series(0, index=calendar)
+        sec_port = pd.Series(0.0, index=calendar)
+        n_open_sec = pd.Series(0, index=calendar)
+
+        positions = 0
+        skipped_no_sector = 0
+        exit_reasons = {"mirror_sell": 0, "trailing_stop": 0,
+                        "time_stop": 0, "end_of_window": 0}
+
+        for r in events:
+            sector_etf = None
+            if benchmark_mode == "sector":
+                sector_etf = sector_lookup.get(r.ticker)
+                if sector_etf is None:
+                    skipped_no_sector += 1
+                    continue
+            entry_idx = calendar.searchsorted(pd.Timestamp(r.event_date))
+            # Position opens the day AFTER the event.
+            open_idx = entry_idx + 1
+            if open_idx >= len(calendar):
+                continue
+
+            # Candidate exit calendar indices, smaller = sooner.
+            cand: list[tuple[int, str]] = []
+
+            # (a) mirror exit on next same-member, same-ticker sale.
+            future_sales = [
+                d for d in sales_by_key.get((r.member_id, r.ticker), [])
+                if d > r.event_date
+            ]
+            if future_sales:
+                mirror_date = min(future_sales)
+                mirror_idx = calendar.searchsorted(pd.Timestamp(mirror_date))
+                if mirror_idx < len(calendar):
+                    cand.append((mirror_idx, "mirror_sell"))
+
+            # (b) trailing stop, scanned over [open_idx, cal_end].
+            ser = closes(r.ticker)
+            if ser is not None:
+                price_window = ser.reindex(calendar).iloc[open_idx:]
+                ts_offset = _find_first_exit_idx(price_window, trailing_stop_pct)
+                if ts_offset is not None:
+                    cand.append((open_idx + ts_offset, "trailing_stop"))
+
+            # (c) time stop fallback.
+            ts_idx = open_idx + time_stop_days
+            if ts_idx < len(calendar):
+                cand.append((ts_idx, "time_stop"))
+
+            # (d) end-of-window catch-all.
+            cand.append((len(calendar) - 1, "end_of_window"))
+
+            exit_idx, reason = min(cand, key=lambda x: x[0])
+            if exit_idx <= open_idx:
+                continue
+            exit_reasons[reason] += 1
+            positions += 1
+
+            window = calendar[open_idx:exit_idx + 1]
+            day_ret = returns(r.ticker).loc[window]
+            port.loc[window] += day_ret.fillna(0.0)
+            n_open.loc[window] += day_ret.notna().astype(int)
+            if sector_etf is not None:
+                etf_ret = returns(sector_etf).loc[window]
+                sec_port.loc[window] += etf_ret.fillna(0.0)
+                n_open_sec.loc[window] += etf_ret.notna().astype(int)
+
+        daily = (port / n_open.replace(0, np.nan)).fillna(0.0)
+        nav = (1 + daily).cumprod()
+
+        if benchmark_mode == "sector":
+            sec_daily = (sec_port / n_open_sec.replace(0, np.nan)).fillna(0.0)
+            bench_nav = (1 + sec_daily).cumprod()
+        else:
+            bench_nav = (1 + cal_series.pct_change().fillna(0.0)).cumprod()
+
+        # Mark to market at end-of-period (see note in the fixed_horizon path).
+        end_idx = max(0, calendar.searchsorted(pd.Timestamp(end), side="right") - 1)
+        strat_total = float(nav.iloc[end_idx] - 1) if len(nav) else 0.0
+        bench_total = float(bench_nav.iloc[end_idx] - 1) if len(bench_nav) else 0.0
+        invested_days = int((n_open > 0).sum())
+
+        return {
+            "window": {"start": start.isoformat(), "end": end.isoformat()},
+            "params": {
+                "min_members": min_members, "date_field": date_field,
+                "benchmark": benchmark, "benchmark_mode": benchmark_mode,
+                "leadership_only": leadership_only,
+                "exit_policy": "mirror_sell_with_trailing_stop",
+                "trailing_stop_pct": trailing_stop_pct,
+                "time_stop_days": time_stop_days,
+            },
+            "positions_opened": positions,
+            "events_skipped_no_sector": skipped_no_sector,
+            "exit_reasons": exit_reasons,
             "days_invested": invested_days,
             "trading_days": len(calendar),
             "strategy_return": round(strat_total, 4),
@@ -514,7 +803,10 @@ def train_test_analysis(train_start: date, train_end: date,
                         horizons: dict | None = None,
                         benchmark: str = DEFAULT_BENCHMARK,
                         leadership_only: bool = False,
-                        benchmark_mode: str = "ticker") -> dict:
+                        benchmark_mode: str = "ticker",
+                        exit_policy: str = "fixed_horizon",
+                        trailing_stop_pct: float = 0.15,
+                        time_stop_days: int = 252) -> dict:
     """Grid-search the strategy on the training years, then evaluate the single
     best configuration once on the held-out test year. The test period is
     touched exactly once, with parameters locked from training."""
@@ -534,6 +826,9 @@ def train_test_analysis(train_start: date, train_end: date,
                                               benchmark=benchmark,
                                               leadership_only=leadership_only,
                                               benchmark_mode=benchmark_mode,
+                                              exit_policy=exit_policy,
+                                              trailing_stop_pct=trailing_stop_pct,
+                                              time_stop_days=time_stop_days,
                                               **params)})
 
     best = max(grid, key=lambda g: g["result"].get("excess_return", -1e9))
@@ -543,6 +838,9 @@ def train_test_analysis(train_start: date, train_end: date,
                                    benchmark=benchmark,
                                    leadership_only=leadership_only,
                                    benchmark_mode=benchmark_mode,
+                                   exit_policy=exit_policy,
+                                   trailing_stop_pct=trailing_stop_pct,
+                                   time_stop_days=time_stop_days,
                                    **best["params"])
 
     # strip NAV curves from the grid comparison to keep the payload small
@@ -557,6 +855,9 @@ def train_test_analysis(train_start: date, train_end: date,
         "benchmark": benchmark,
         "benchmark_mode": benchmark_mode,
         "leadership_only": leadership_only,
+        "exit_policy": exit_policy,
+        "trailing_stop_pct": trailing_stop_pct,
+        "time_stop_days": time_stop_days,
         "train_window": {"start": train_start.isoformat(), "end": train_end.isoformat()},
         "test_window": {"start": test_start.isoformat(), "end": test_end.isoformat()},
         "event_study": {"train": es_train, "test": es_test},

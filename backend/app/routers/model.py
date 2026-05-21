@@ -30,6 +30,9 @@ class AnalyzeRequest(BaseModel):
     benchmark: str = "SPY"  # ticker excess returns are measured against (SPY cap-weight, RSP equal-weight)
     leadership_only: bool = False  # restrict to trades made while member held a leadership/chair position
     benchmark_mode: str = "ticker"  # "ticker" = single benchmark; "sector" = each stock vs its GICS sector ETF
+    exit_policy: str = "fixed_horizon"  # "fixed_horizon" | "mirror_sell_with_trailing_stop"
+    trailing_stop_pct: float = 0.15  # only used for mirror_sell_with_trailing_stop
+    time_stop_days: int = 252        # fallback close after N trading days if no mirror sale
 
 
 def _extract_scores(result: dict) -> dict:
@@ -41,6 +44,7 @@ def _extract_scores(result: dict) -> dict:
         "benchmark": result.get("benchmark", "SPY"),
         "benchmark_mode": result.get("benchmark_mode", "ticker"),
         "leadership_only": result.get("leadership_only", False),
+        "exit_policy": result.get("exit_policy", "fixed_horizon"),
         "selected_params": result["selected_params"],
         "train_excess": st["excess_return"],
         "oos_excess": oos["excess_return"],
@@ -65,6 +69,9 @@ def _run(run_id: int) -> None:
             benchmark=p.get("benchmark", "SPY"),
             leadership_only=p.get("leadership_only", False),
             benchmark_mode=p.get("benchmark_mode", "ticker"),
+            exit_policy=p.get("exit_policy", "fixed_horizon"),
+            trailing_stop_pct=p.get("trailing_stop_pct", 0.15),
+            time_stop_days=p.get("time_stop_days", 252),
         )
         run.full_results = result
         run.scores = _extract_scores(result)
@@ -115,6 +122,9 @@ def run_model(req: AnalyzeRequest, background_tasks: BackgroundTasks,
         "benchmark": req.benchmark,
         "leadership_only": req.leadership_only,
         "benchmark_mode": req.benchmark_mode,
+        "exit_policy": req.exit_policy,
+        "trailing_stop_pct": req.trailing_stop_pct,
+        "time_stop_days": req.time_stop_days,
     }
     run = models.AnalysisRun(
         dataset_id=req.dataset_id, tool="train_test_analysis",

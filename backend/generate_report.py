@@ -365,6 +365,8 @@ def _runs_table(runs: list[dict]) -> str:
         bench = sc.get("benchmark") or p.get("benchmark") or "SPY"
         bench_mode = sc.get("benchmark_mode") or p.get("benchmark_mode") or "ticker"
         bench_label = bench if bench_mode == "ticker" else f"sector ({bench} cal.)"
+        exit_policy = sc.get("exit_policy") or p.get("exit_policy") or "fixed_horizon"
+        exit_short = "fixed" if exit_policy == "fixed_horizon" else "mirror+stop"
         leadership = bool(sc.get("leadership_only") or p.get("leadership_only"))
         tradeable = anchor == "filing_date"
         tag = ("<span style='color:#047857;font-weight:600'>tradeable</span>"
@@ -372,11 +374,13 @@ def _runs_table(runs: list[dict]) -> str:
                else "<span style='color:#b91c1c'>diagnostic</span>")
         lead_tag = ("<span style='color:#7c3aed;font-weight:600'>leadership</span>"
                     if leadership else "<span style='color:#6e6e73'>all members</span>")
+        exit_tag = (f"<code>{html.escape(exit_short)}</code>")
         rows.append(
             f"<tr>"
             f"<td>#{r['id']}</td>"
             f"<td>{tag}</td>"
             f"<td>{lead_tag}</td>"
+            f"<td>{exit_tag}</td>"
             f"<td><code>{html.escape(anchor)}</code></td>"
             f"<td><code>{html.escape(bench_label)}</code></td>"
             f"<td>{html.escape(p.get('train_start',''))} → {html.escape(p.get('train_end',''))}</td>"
@@ -392,7 +396,7 @@ def _runs_table(runs: list[dict]) -> str:
     return (
         "<table>"
         "<thead><tr>"
-        "<th>run</th><th>kind</th><th>universe</th><th>anchor</th><th>bench</th>"
+        "<th>run</th><th>kind</th><th>universe</th><th>exit</th><th>anchor</th><th>bench</th>"
         "<th>train window</th><th>test window</th>"
         "<th>hold_days grid</th><th>min_members grid</th><th>selected</th>"
         "<th class='num'>train excess</th><th class='num'>OOS excess</th>"
@@ -404,7 +408,11 @@ def _runs_table(runs: list[dict]) -> str:
         "<code>transaction_date</code> (the day the member actually traded — informative "
         "for understanding the signal but contains look-ahead bias for any follower). "
         "<b>leadership</b> universe = trades made while the member held a chamber "
-        "leadership or committee-chair position; <b>all members</b> = no such filter.</p>")
+        "leadership or committee-chair position; <b>all members</b> = no such filter. "
+        "<b>fixed</b> exit = hard-timer (close after <code>hold_days</code>). "
+        "<b>mirror+stop</b> exit = mirror_sell_with_trailing_stop (close on earliest "
+        "of: same-member sale disclosure, trailing 15% stop, 252-day time stop, or "
+        "end-of-window).</p>")
 
 
 def _assumptions_section() -> str:
@@ -918,6 +926,112 @@ the held-out test window. Numbers above are <em>OOS</em> unless labeled "train".
 {_diagnosis_section(survival, survival_meta["min_members"], survival_meta["cluster_days"])}
 
 {bayes_html}
+
+<h2 id="phase1">Phase 1 — signal-driven exits and a found MTM bug</h2>
+
+<p class="callout warn">
+While building <code>mirror_sell_with_trailing_stop</code>, I discovered the
+rules-backtest engine was reporting strategy and benchmark returns at
+<code>cal_end</code> (the calendar's extended tail past the test window),
+not at <code>test_end</code>. Both strategy and benchmark see the extended
+tail, but the strategy goes flat once positions close while the benchmark
+keeps drifting. For <code>fixed_horizon</code> with <code>hold=63</code>
+the extension is ~100 days (small bias). For
+<code>mirror_sell_with_trailing_stop</code> with <code>time_stop=252</code>
+the extension is ~400 days (large bias). Fixed in the same commit as the
+new exit policy: returns are now marked to market at the last calendar
+index on or before the test window's <code>end</code>. <b>Runs #1-22 use
+the old cal_end convention; runs #23+ use the corrected end-of-period
+MTM</b>, and only #23+ should be used for cross-run-style comparison.
+</p>
+
+<p>
+Runs <b>#23-#30</b> repeat the leadership / non-leadership × SPY / RSP
+matrix under both exit policies, on the corrected convention:
+</p>
+
+<table>
+<thead><tr>
+<th>universe</th>
+<th>benchmark</th>
+<th class='num'>fixed_horizon OOS excess</th>
+<th class='num'>mirror+stop OOS excess</th>
+<th class='num'>fixed train excess</th>
+<th class='num'>mirror train excess</th>
+</tr></thead><tbody>
+<tr><td>all members (#23/#27)</td><td>SPY</td>
+<td class='num'>+3.19%</td><td class='num'>−2.14%</td>
+<td class='num'>−15.44%</td><td class='num'>−21.00%</td></tr>
+<tr><td>all members (#24/#28)</td><td>RSP</td>
+<td class='num'>+9.66%</td><td class='num'>+4.33%</td>
+<td class='num'>+4.01%</td><td class='num'>−1.55%</td></tr>
+<tr><td>leadership (#25/#29)</td><td>SPY</td>
+<td class='num'>+5.57%</td><td class='num'>+1.67%</td>
+<td class='num'>−55.30%</td><td class='num'>−45.34%</td></tr>
+<tr><td>leadership (#26/#30)</td><td>RSP</td>
+<td class='num'>+12.04%</td><td class='num'>+8.14%</td>
+<td class='num'>−35.85%</td><td class='num'>−25.90%</td></tr>
+</tbody></table>
+
+<p><b>Mirror_sell underperforms fixed_horizon in every cell</b> by 4–5pp on
+SPY-relative excess and ~5pp on RSP-relative. Why? The exit-reason mix
+tells the story:</p>
+
+<table>
+<thead><tr>
+<th>universe</th>
+<th class='num'>trailing_stop</th>
+<th class='num'>mirror_sell</th>
+<th class='num'>end_of_window</th>
+<th class='num'>time_stop</th>
+</tr></thead><tbody>
+<tr><td>all members (796 positions)</td>
+<td class='num'>586 (74%)</td><td class='num'>86 (11%)</td>
+<td class='num'>91 (11%)</td><td class='num'>33 (4%)</td></tr>
+<tr><td>leadership (186 positions)</td>
+<td class='num'>108 (58%)</td><td class='num'>40 (22%)</td>
+<td class='num'>36 (19%)</td><td class='num'>2 (1%)</td></tr>
+</tbody></table>
+
+<p>
+The 15% trailing stop fires on the vast majority of positions before the
+mirror signal can. 2025's tech / momentum-led rallies routinely drew down
+15% from peaks mid-rally — the stop captured those local lows and cashed
+out before recoveries. The literal mirror-the-trader signal (close when
+the disclosing member sells the same ticker) only fired on 11-22% of
+positions; on its own it isn't tight enough to manage risk, and combined
+with a 15% trailing it stops too often.
+</p>
+
+<p class="callout">
+<b>Takeaway for the strategy framework.</b> The engine is now ready for
+signal-driven exits, the recommendation pipeline that needs them, and
+position-level state tracking. But this particular exit policy at this
+trailing-stop level isn't the right one. Plausible next iterations
+(<i>not run here</i>):
+<ul class="tight">
+<li><b>Loosen the trailing stop</b> (25-30% instead of 15%) to let
+2025-style volatility breathe.</li>
+<li><b>Drop the trailing stop entirely</b> and rely on the mirror signal
+alone + a longer time stop (mirror-only run). Would isolate the value
+of the literal-follower mechanic.</li>
+<li><b>Use a volatility-scaled trailing stop</b> (e.g. 2× trailing 30-day
+realized vol) so the stop adapts to each ticker's noise level.</li>
+</ul>
+</p>
+
+<p>
+Also worth flagging: on the corrected MTM convention, the all-member
+filing-date strategy with the hard-timer exit actually does beat SPY
+by +3.19% in 2025 (and RSP by +9.66%). This was hidden by the bias.
+However, the Bayesian model on per-trade excess returns is unaffected
+by the bug (it computes 63-day forward excess from filing_date, not
+from cal_end) — its verdict that the <em>per-trade</em> leadership
+effect is not credible, and that the aggregate gain is composition
+(post-trifecta period + sector tilts), still stands. The +3.19%
+aggregate result is consistent with that decomposition, not evidence
+against it.
+</p>
 
 {_next_steps_section()}
 
