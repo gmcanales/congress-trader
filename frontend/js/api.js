@@ -44,5 +44,7 @@ const API = (() => {
     getRuns: () => get('/model/runs'),
     getRun: (id) => get(`/model/runs/${id}`),
     runAnalysis: (payload) => post('/model/run', payload),
+    getRecommendationProfiles: () => get('/recommendations/profiles'),
+    getRecommendations: (params) => get('/recommendations/', params),
   };
 })();

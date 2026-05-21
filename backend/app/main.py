@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import members, transactions, prices, scraper, model, datasets
+from app.routers import members, transactions, prices, scraper, model, datasets, recommendations
 
 logging.basicConfig(level=logging.INFO)
 
@@ -56,6 +56,7 @@ app.include_router(prices.router, prefix=prefix)
 app.include_router(scraper.router, prefix=prefix)
 app.include_router(model.router, prefix=prefix)
 app.include_router(datasets.router, prefix=prefix)
+app.include_router(recommendations.router, prefix=prefix)
 
 
 @app.get("/health")

@@ -16,6 +16,7 @@
       <nav class="view-nav">
         <button id="nav-trades" class="nav-btn active">Trades</button>
         <button id="nav-analysis" class="nav-btn">Analysis</button>
+        <button id="nav-recs" class="nav-btn">Recommendations</button>
       </nav>
       <button id="admin-toggle" class="btn-ghost">Admin</button>
     </div>
@@ -201,10 +202,98 @@
     </div>
   </section>
 
+  <section id="recs-view" class="analysis-view hidden">
+    <div class="analysis-inner">
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Strategy Recommendations</h3>
+          <span class="recs-subtitle">Today's view of what the strategy would open, hold, or close based on congressional disclosures.</span>
+        </div>
+        <div class="rec-form">
+          <label>Risk profile
+            <select id="rec-profile">
+              <option value="conservative">Conservative — broad universe, beta-stop</option>
+              <option value="moderate">Moderate — leadership only, beta-stop</option>
+              <option value="aggressive">Aggressive — leadership only, no stop</option>
+            </select>
+          </label>
+          <label>As of
+            <input type="date" id="rec-asof">
+          </label>
+          <label>New-position window (days)
+            <input type="number" id="rec-window" value="14" min="1" max="60">
+          </label>
+          <button id="rec-go" class="btn-primary">Get Recommendations</button>
+        </div>
+        <div id="rec-status" class="scrape-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Strategy Config</h3>
+        </div>
+        <div id="rec-config" class="rec-config-box">No recommendations yet — pick a risk profile and click Get Recommendations.</div>
+      </div>
+
+      <div class="rec-three-col">
+        <div class="panel rec-col">
+          <div class="panel-head"><h3>Open Today <span id="rec-open-count" class="tx-count"></span></h3></div>
+          <p class="rec-help">New entries: the strategy would open these positions because the buy filed today (or within the new-window).</p>
+          <div class="tx-table-scroll">
+            <table class="rec-table">
+              <thead><tr>
+                <th>Ticker</th><th>Member</th><th>Party</th>
+                <th>Filing date</th><th>Days ago</th>
+                <th>Entry $</th><th>Current $</th><th>Return</th>
+                <th>β</th><th>Eff. stop %</th>
+              </tr></thead>
+              <tbody id="rec-open-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel rec-col">
+          <div class="panel-head"><h3>Currently Holding <span id="rec-hold-count" class="tx-count"></span></h3></div>
+          <p class="rec-help">Positions already in the portfolio that haven't hit any exit condition.</p>
+          <div class="tx-table-scroll">
+            <table class="rec-table">
+              <thead><tr>
+                <th>Ticker</th><th>Member</th>
+                <th>Entry</th><th>Days held</th>
+                <th>Return</th><th>DD from peak</th>
+                <th>Eff. stop %</th>
+              </tr></thead>
+              <tbody id="rec-hold-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel rec-col">
+          <div class="panel-head"><h3>Close Today <span id="rec-close-count" class="tx-count"></span></h3></div>
+          <p class="rec-help">Exit signal fires on the as-of date: mirror sale, trailing-stop hit, or time-stop fallback.</p>
+          <div class="tx-table-scroll">
+            <table class="rec-table">
+              <thead><tr>
+                <th>Ticker</th><th>Member</th>
+                <th>Exit reason</th><th>Entry</th>
+                <th>Exit $</th><th>Realized</th>
+                <th>Days held</th>
+              </tr></thead>
+              <tbody id="rec-close-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="js/api.js"></script>
   <script src="js/chart.js"></script>
   <script src="js/app.js"></script>
   <script src="js/analysis.js"></script>
+  <script src="js/recommendations.js"></script>
 </body>
 </html>

@@ -563,5 +563,80 @@ input:focus { border-color: var(--accent); }
 .axis text { fill: var(--text-muted); font-size: 10px; }
 .axis line, .axis path { stroke: var(--border); }
 
+/* ── Recommendations ── */
+.recs-subtitle {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 12px;
+}
+.rec-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: var(--radius);
+}
+.rec-form label {
+  display: flex; flex-direction: column;
+  font-size: 11px; color: var(--text-muted); gap: 4px;
+}
+.rec-form select, .rec-form input[type=date], .rec-form input[type=number] {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.rec-config-box {
+  padding: 10px 14px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.rec-config-box .kvtable {
+  width: 100%; border-collapse: collapse;
+}
+.rec-config-box .kvtable td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.rec-config-box .kvtable td.key {
+  color: var(--text-muted);
+  width: 28%;
+}
+.rec-three-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 1100px) {
+  .rec-three-col { grid-template-columns: 1fr 1fr 1fr; }
+}
+.rec-col { padding: 12px; }
+.rec-help {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 4px 0 10px;
+}
+.rec-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.rec-table th, .rec-table td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.rec-table th { color: var(--text-muted); font-weight: 600; }
+.rec-table td b { color: var(--accent); }
+.scrape-status.ok { color: var(--buy); }
+.scrape-status.error { color: var(--sell); }
+
 /* ── Utility ── */
 .hidden { display: none !important; }
