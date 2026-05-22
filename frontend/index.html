@@ -207,6 +207,68 @@
 
       <div class="panel">
         <div class="panel-head">
+          <h3>Your Portfolio <span id="port-count" class="tx-count"></span></h3>
+          <span class="recs-subtitle">Track your actual holdings — overlaid in <b style="color:#ff3b3b">bold red</b> on the Strategy Comparison chart below, and tagged against the strategy's view (held / closing today / new buy signal).</span>
+        </div>
+
+        <form id="port-form" class="port-form">
+          <input type="hidden" id="port-edit-id">
+          <label>Ticker <input type="text" id="port-ticker" placeholder="AAPL" required></label>
+          <label>Shares <input type="number" id="port-shares" step="any" min="0" required></label>
+          <label>Cost basis ($/sh) <input type="number" id="port-cost" step="any" min="0" required></label>
+          <label>Buy date <input type="date" id="port-buydate" required></label>
+          <label>Target exit $ <input type="number" id="port-tgt-px" step="any" min="0"></label>
+          <label>Target exit date <input type="date" id="port-tgt-date"></label>
+          <label class="port-notes-label">Notes <input type="text" id="port-notes" placeholder="optional"></label>
+          <div class="port-form-actions">
+            <button type="submit" id="port-save-btn" class="btn-primary">Add Holding</button>
+            <button type="button" id="port-cancel-btn" class="btn-ghost hidden">Cancel</button>
+            <div class="port-csv-actions">
+              <input type="file" id="port-csv-file" accept=".csv,text/csv" class="hidden">
+              <button type="button" id="port-csv-pick-btn" class="btn-ghost">Bulk upload CSV…</button>
+              <select id="port-csv-mode" class="mini-select" title="Replace by ticker deletes any existing row with the same ticker before insert.">
+                <option value="append" selected>append</option>
+                <option value="replace_by_ticker">replace by ticker</option>
+              </select>
+              <a id="port-csv-sample" class="btn-ghost-link" href="#" title="Download a template CSV">Sample CSV</a>
+            </div>
+          </div>
+        </form>
+        <div id="port-status" class="scrape-status"></div>
+
+        <div class="rec-table-scroll port-table-scroll">
+          <table class="rec-table port-table">
+            <thead><tr>
+              <th>Ticker</th><th>Shares</th>
+              <th>Cost $</th><th>Current $</th>
+              <th>Value</th><th>Unrealized</th>
+              <th>Days held</th><th>Target</th>
+              <th>Strategy view</th><th>Notes</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="port-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Strategy Comparison <span class="recs-subtitle">Out-of-sample NAV for the three risk profiles, with rolling daily-vol shade. Your portfolio is overlaid in bold red.</span></h3>
+          <div class="strat-controls">
+            <label>σ band <input type="number" id="strat-band-k" value="1" min="0" max="5" step="0.5"></label>
+            <label>Window <input type="number" id="strat-band-window" value="21" min="2" max="252"></label>
+            <button id="strat-reload" class="btn-ghost">Reload</button>
+          </div>
+        </div>
+        <div id="strat-legend" class="strat-legend"></div>
+        <div id="strat-chart-wrap" class="strat-chart-wrap">
+          <svg id="strat-chart"></svg>
+          <div id="strat-empty" class="empty hidden">No backtest runs match the profile filters yet.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
           <h3>Strategy Recommendations</h3>
           <span class="recs-subtitle">Today's view of what the strategy would open, hold, or close based on congressional disclosures.</span>
         </div>
@@ -232,6 +294,10 @@
       <div class="panel">
         <div class="panel-head">
           <h3>Strategy Config</h3>
+          <div class="cache-controls">
+            <span id="rec-cache-tag" class="cache-tag"></span>
+            <button id="rec-refresh-cache" class="btn-ghost" title="Recompute all profiles' snapshots now (runs in background)">Refresh cache</button>
+          </div>
         </div>
         <div id="rec-config" class="rec-config-box">No recommendations yet — pick a risk profile and click Get Recommendations.</div>
       </div>
@@ -240,7 +306,7 @@
         <div class="panel rec-col">
           <div class="panel-head"><h3>Open Today <span id="rec-open-count" class="tx-count"></span></h3></div>
           <p class="rec-help">New entries: the strategy would open these positions because the buy filed today (or within the new-window).</p>
-          <div class="tx-table-scroll">
+          <div class="rec-table-scroll">
             <table class="rec-table">
               <thead><tr>
                 <th>Ticker</th><th>Member</th><th>Party</th>
@@ -256,7 +322,7 @@
         <div class="panel rec-col">
           <div class="panel-head"><h3>Currently Holding <span id="rec-hold-count" class="tx-count"></span></h3></div>
           <p class="rec-help">Positions already in the portfolio that haven't hit any exit condition.</p>
-          <div class="tx-table-scroll">
+          <div class="rec-table-scroll">
             <table class="rec-table">
               <thead><tr>
                 <th>Ticker</th><th>Member</th>
@@ -272,7 +338,7 @@
         <div class="panel rec-col">
           <div class="panel-head"><h3>Close Today <span id="rec-close-count" class="tx-count"></span></h3></div>
           <p class="rec-help">Exit signal fires on the as-of date: mirror sale, trailing-stop hit, or time-stop fallback.</p>
-          <div class="tx-table-scroll">
+          <div class="rec-table-scroll">
             <table class="rec-table">
               <thead><tr>
                 <th>Ticker</th><th>Member</th>
@@ -285,6 +351,25 @@
           </div>
         </div>
       </div>
+
+      <footer class="recs-footer">
+        <div class="footer-col">
+          <h4>Reports</h4>
+          <ul id="footer-reports" class="footer-links"><li class="muted">loading…</li></ul>
+        </div>
+        <div class="footer-col">
+          <h4>Documentation</h4>
+          <ul id="footer-docs" class="footer-links"><li class="muted">loading…</li></ul>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/anthropics/claude-code/issues" target="_blank" rel="noopener">File an issue</a></li>
+            <li><a href="/api/recommendations/cache" target="_blank" rel="noopener">Cache status (JSON)</a></li>
+            <li><a href="/api/model/runs" target="_blank" rel="noopener">All analysis runs (JSON)</a></li>
+          </ul>
+        </div>
+      </footer>
 
     </div>
   </section>

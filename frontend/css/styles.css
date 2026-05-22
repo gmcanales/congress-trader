@@ -456,7 +456,11 @@ input:focus { border-color: var(--accent); }
 .nav-btn.active { background: var(--accent); color: #fff; }
 
 /* ── Analysis view ── */
-.analysis-view { padding: 18px; overflow-y: auto; }
+.analysis-view {
+  padding: 18px;
+  overflow-y: auto;
+  height: calc(100vh - 52px);  /* fill viewport below header so overflow-y actually triggers */
+}
 .analysis-inner {
   max-width: 1100px;
   margin: 0 auto;
@@ -637,6 +641,186 @@ input:focus { border-color: var(--accent); }
 .rec-table td b { color: var(--accent); }
 .scrape-status.ok { color: var(--buy); }
 .scrape-status.error { color: var(--sell); }
+
+/* ── Cache freshness tag ── */
+.cache-controls { display: flex; align-items: center; gap: 10px; }
+.cache-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.cache-tag.cache-hit   { background: rgba(63,185,80,0.18); color: var(--buy); }
+.cache-tag.cache-stale { background: rgba(214,169,54,0.18); color: #d6a936; }
+.cache-tag.cache-live  { background: rgba(88,166,255,0.18); color: var(--accent); }
+
+/* ── Strategy comparison chart ── */
+.strat-controls {
+  display: flex; gap: 10px; align-items: center;
+}
+.strat-controls label {
+  display: flex; gap: 4px; align-items: center;
+  font-size: 11px; color: var(--text-muted);
+}
+.strat-controls input[type=number] { width: 60px; padding: 4px 6px; font-size: 12px; }
+.strat-legend {
+  display: flex; flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  margin: 4px 0 6px;
+  color: var(--text-muted);
+}
+.strat-legend .legend-item {
+  display: flex; align-items: center; gap: 5px;
+}
+.strat-legend .legend-swatch {
+  display: inline-block; width: 14px; height: 3px; border-radius: 1px;
+}
+.strat-legend .legend-summary {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.strat-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 4px 6px 6px;
+}
+#strat-chart { width: 100%; height: 100%; display: block; }
+.strat-line { fill: none; stroke-width: 2px; }
+.strat-bench { fill: none; stroke: var(--text-muted); stroke-width: 1.2px; stroke-dasharray: 4,3; opacity: .6; }
+.strat-band { stroke: none; opacity: .30; }
+/* User portfolio overlay — bold red, thick, drawn on top */
+.strat-user {
+  fill: none;
+  stroke: #ff3b3b;
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 2px rgba(255,59,59,0.5));
+}
+.strat-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--tooltip-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  z-index: 10;
+  display: none;
+  min-width: 180px;
+}
+
+/* Scrollable rec/portfolio tables — capped so the page can host many */
+.rec-table-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.rec-table-scroll .rec-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface2);
+  z-index: 1;
+}
+.port-table-scroll { max-height: 420px; }
+
+/* ── User portfolio form ── */
+.port-form {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+.port-form label {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 11px; color: var(--text-muted);
+}
+.port-form input[type=text], .port-form input[type=number], .port-form input[type=date] {
+  padding: 5px 8px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 12px;
+}
+.port-notes-label { grid-column: span 2; }
+.port-form-actions {
+  grid-column: 1 / -1;
+  display: flex; gap: 8px; align-items: center;
+}
+.port-table th:last-child, .port-table td:last-child { width: 80px; }
+.port-action-btn {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: 3px;
+  padding: 2px 6px; font-size: 11px; cursor: pointer; margin-right: 3px;
+}
+.port-action-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.port-action-btn.danger:hover { color: var(--sell); border-color: var(--sell); }
+
+.strategy-view-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 3px;
+  font-weight: 600;
+  margin-right: 3px;
+}
+.pill-close { background: rgba(248,81,73,0.18); color: var(--sell); }
+.pill-hold  { background: rgba(88,166,255,0.18); color: var(--accent); }
+.pill-buy   { background: rgba(63,185,80,0.18); color: var(--buy); }
+.pill-none  { color: var(--text-muted); font-size: 11px; }
+
+/* CSV upload sub-controls in the portfolio form */
+.port-csv-actions {
+  margin-left: auto;
+  display: flex; gap: 8px; align-items: center;
+  font-size: 11px;
+}
+.port-csv-actions .mini-select { padding: 4px 6px; font-size: 11px; }
+.btn-ghost-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 11px;
+  border-bottom: 1px dotted var(--text-muted);
+}
+.btn-ghost-link:hover { color: var(--text); border-color: var(--text); }
+
+/* ── Footer (reports + docs links) ── */
+.recs-footer {
+  margin-top: 10px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.recs-footer h4 {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.footer-links {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.footer-links li { font-size: 12px; line-height: 1.4; }
+.footer-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.footer-links a:hover { text-decoration: underline; }
+.footer-links .file-meta {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 6px;
+}
 
 /* ── Utility ── */
 .hidden { display: none !important; }

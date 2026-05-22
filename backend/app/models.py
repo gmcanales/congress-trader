@@ -192,6 +192,49 @@ class Position(Base):
     source = Column(String)  # e.g. "unitedstates/congress-legislators@<sha>"
 
 
+class RecommendationSnapshot(Base):
+    """A pre-computed recommendation payload for a specific (as_of, profile,
+    new_window_days) tuple. Written by the daily scheduler job at 6am ET so
+    the recs page loads instantly. We keep at most ~14 days of history per
+    profile (see services/snapshot.py:MAX_DAYS_PER_PROFILE) — the rest is
+    pruned after each successful write.
+    """
+    __tablename__ = "recommendation_snapshots"
+
+    id = Column(Integer, primary_key=True)
+    as_of = Column(Date, nullable=False, index=True)
+    risk_profile = Column(String, nullable=False, index=True)
+    new_window_days = Column(Integer, nullable=False)
+    payload = Column(JSONB, nullable=False)   # full compute_recommendations() output
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("as_of", "risk_profile", "new_window_days",
+                         name="uq_rec_snapshot"),
+    )
+
+
+class UserHolding(Base):
+    """A position the user currently (or historically) holds, tracked
+    in the frontend portfolio. No auth: this is a single-user app, so
+    there is no `user_id`. The user is responsible for keeping it
+    accurate. `cost_basis` is per-share, in the same currency as
+    `price_bars.close`.
+    """
+    __tablename__ = "user_holdings"
+
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, nullable=False, index=True)
+    shares = Column(Float, nullable=False)
+    cost_basis = Column(Float, nullable=False)   # per-share
+    buy_date = Column(Date, nullable=False)
+    notes = Column(String)
+    target_exit_price = Column(Float)
+    target_exit_date = Column(Date)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class PartyControl(Base):
     """Which party held the majority of a chamber over a given period.
 

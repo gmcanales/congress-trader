@@ -37,6 +37,32 @@ from app.services.backtest import (
 )
 
 
+# When fetching the historical NAV for the three-profile comparison we
+# pull the most recent done AnalysisRun whose params satisfy this filter.
+# Kept here (not in RISK_PROFILES) because it's a *discovery* rule for
+# the backtest data, not a config knob of the strategy.
+PROFILE_RUN_FILTERS: dict[str, dict] = {
+    "conservative": {
+        "leadership_only": False,
+        "exit_policies": (
+            "mirror_sell_with_beta_trailing_stop",
+            "mirror_sell_with_trailing_stop",
+        ),
+    },
+    "moderate": {
+        "leadership_only": True,
+        "exit_policies": (
+            "mirror_sell_with_beta_trailing_stop",
+            "mirror_sell_with_trailing_stop",
+        ),
+    },
+    "aggressive": {
+        "leadership_only": True,
+        "exit_policies": ("mirror_sell",),
+    },
+}
+
+
 RISK_PROFILES: dict[str, dict] = {
     "conservative": {
         "label": "Conservative",
@@ -351,5 +377,131 @@ def compute_recommendations(as_of: date,
             "close": [asdict(p) for p in close_list],
             "summary": summary,
         }
+    finally:
+        db.close()
+
+
+def _find_run_for_profile(db, profile_key: str) -> models.AnalysisRun | None:
+    """Pick the most recent done AnalysisRun whose params satisfy the
+    profile's discovery filter. Returns None if no matching run exists."""
+    flt = PROFILE_RUN_FILTERS.get(profile_key)
+    if flt is None:
+        return None
+    rows = (
+        db.query(models.AnalysisRun)
+        .filter(models.AnalysisRun.status == "done")
+        .filter(models.AnalysisRun.tool == "train_test_analysis")
+        .order_by(models.AnalysisRun.created_at.desc())
+        .all()
+    )
+    for r in rows:
+        scores = r.scores or {}
+        params = r.params or {}
+        leadership_only = bool(scores.get("leadership_only",
+                                          params.get("leadership_only", False)))
+        exit_policy = scores.get("exit_policy",
+                                  params.get("exit_policy", "fixed_horizon"))
+        # filing_date only; transaction_date is diagnostic
+        date_field = scores.get("date_field",
+                                 params.get("date_field", "filing_date"))
+        if date_field != "filing_date":
+            continue
+        if leadership_only != flt["leadership_only"]:
+            continue
+        if exit_policy not in flt["exit_policies"]:
+            continue
+        return r
+    return None
+
+
+def _band_from_nav(nav: list[float], window: int = 21,
+                   k: float = 1.0) -> tuple[list[float | None], list[float | None]]:
+    """Rolling-volatility envelope around an NAV path.
+
+    At each point t we compute σ_t = rolling stdev of the last `window`
+    daily returns, then return NAV(t) × (1 ± k·σ_t). Visually this is a
+    "daily volatility band" around the realized strategy path — wider in
+    turbulent periods, tighter in calm ones. It is NOT a confidence
+    interval on the cumulative return: see the chart caption.
+    """
+    if not nav:
+        return [], []
+    arr = np.asarray(nav, dtype=float)
+    rets = np.diff(arr) / arr[:-1]
+    rets = np.insert(rets, 0, np.nan)  # align with NAV indices
+    # rolling stdev
+    band_lo: list[float | None] = []
+    band_hi: list[float | None] = []
+    for i in range(len(arr)):
+        if i < window:
+            band_lo.append(None); band_hi.append(None); continue
+        seg = rets[i - window + 1 : i + 1]
+        sigma = float(np.nanstd(seg, ddof=1))
+        if np.isnan(sigma):
+            band_lo.append(None); band_hi.append(None); continue
+        band_lo.append(round(float(arr[i] * (1 - k * sigma)), 6))
+        band_hi.append(round(float(arr[i] * (1 + k * sigma)), 6))
+    return band_lo, band_hi
+
+
+def get_strategy_comparison(band_k: float = 1.0,
+                            band_window: int = 21) -> dict:
+    """Return out-of-sample NAV curves for each of the three risk
+    profiles, plus a rolling-volatility envelope around each."""
+    db = SessionLocal()
+    try:
+        out: dict = {"profiles": [], "missing": []}
+        for key, prof in RISK_PROFILES.items():
+            run = _find_run_for_profile(db, key)
+            if run is None or not run.full_results:
+                out["missing"].append({
+                    "key": key, "label": prof["label"],
+                    "reason": "no matching AnalysisRun found",
+                })
+                continue
+            oos = (run.full_results or {}).get("out_of_sample_test") or {}
+            curve = oos.get("nav_curve") or []
+            if not curve:
+                out["missing"].append({
+                    "key": key, "label": prof["label"],
+                    "reason": f"run #{run.id} has no nav_curve",
+                })
+                continue
+            dates = [p["date"] for p in curve]
+            strat = [float(p["strategy"]) for p in curve]
+            bench = [float(p["benchmark"]) for p in curve]
+            lo, hi = _band_from_nav(strat, window=band_window, k=band_k)
+            scores = run.scores or {}
+            out["profiles"].append({
+                "key": key,
+                "label": prof["label"],
+                "description": prof["description"],
+                "run_id": run.id,
+                "window": oos.get("window") or run.full_results.get("window"),
+                "dates": dates,
+                "strategy": strat,
+                "benchmark": bench,
+                "band_lo": lo,
+                "band_hi": hi,
+                "summary": {
+                    "oos_strategy_return": scores.get("oos_strategy_return"),
+                    "oos_benchmark_return": scores.get("oos_benchmark_return"),
+                    "oos_excess": scores.get("oos_excess"),
+                    "exit_policy": scores.get("exit_policy"),
+                    "leadership_only": scores.get("leadership_only"),
+                    "benchmark": scores.get("benchmark"),
+                },
+            })
+        out["band"] = {
+            "method": "rolling_daily_vol_envelope",
+            "window": band_window,
+            "k_sigma": band_k,
+            "description": (
+                f"NAV × (1 ± {band_k}σ) where σ is the trailing "
+                f"{band_window}-day stdev of daily strategy returns. "
+                "Visualizes recent volatility, not a CI on cumulative return."
+            ),
+        }
+        return out
     finally:
         db.close()

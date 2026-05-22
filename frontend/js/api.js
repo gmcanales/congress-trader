@@ -46,5 +46,46 @@ const API = (() => {
     runAnalysis: (payload) => post('/model/run', payload),
     getRecommendationProfiles: () => get('/recommendations/profiles'),
     getRecommendations: (params) => get('/recommendations/', params),
+    getCacheStatus: () => get('/recommendations/cache'),
+    refreshCache: () => post('/recommendations/refresh', {}),
+    getStrategyComparison: (params) => get('/recommendations/strategies', params),
+    getHoldings: () => get('/holdings/'),
+    getPortfolioNav: (start, end) => get('/holdings/nav', { start, end }),
+    getCsvSample: () => get('/holdings/csv/sample'),
+    uploadCsv: (file, mode) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return fetch(`/api/holdings/upload?mode=${encodeURIComponent(mode)}`, {
+        method: 'POST', body: fd,
+      }).then(async r => {
+        if (!r.ok) {
+          const b = await r.json().catch(() => ({}));
+          throw new Error(b.detail || `HTTP ${r.status}`);
+        }
+        return r.json();
+      });
+    },
+    listReports: () => get('/reports/'),
+    listDocs: () => get('/docs/'),
+    createHolding: (body) => post('/holdings/', body),
+    updateHolding: (id, body) => fetch(`/api/holdings/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(async r => {
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        throw new Error(b.detail || `HTTP ${r.status}`);
+      }
+      return r.json();
+    }),
+    deleteHolding: (id) => fetch(`/api/holdings/${id}`, { method: 'DELETE' })
+      .then(async r => {
+        if (!r.ok) {
+          const b = await r.json().catch(() => ({}));
+          throw new Error(b.detail || `HTTP ${r.status}`);
+        }
+        return r.json();
+      }),
   };
 })();
