@@ -54,6 +54,26 @@ try `https://goosebase.org/cdn-cgi/trace` as a CF-only liveness check.
 
 The NUC database (`db.internal.example:5432`) remains LAN-only.
 
+### Planned NUC migration
+
+Backend + frontend + cloudflared will move from the dev box to the NUC so
+the dev box can shut down nightly. Bayesian fitting stays on the dev box
+(too RAM-hungry for the NUC, and admin-only anyway). Backtests ride along
+with the backend and run ~15–30% slower on the NUC's i5-1240P; the
+loopback DB connection partially offsets the CPU drop.
+
+NUC budget after prep (2026-05-22):
+**3.6 GB RAM total / ~2.6 GB available, 2 GB swap, i5-1240P (12C/16T),
+NVMe SSD.** Headroom achieved by disabling the `nodm` graphical session
+(~600 MB), disabling `nordvpnd` + tearing down its WireGuard interface
+(~100 MB + restored direct LAN routing), and adding a 2 GB swapfile with
+`vm.swappiness=10`. RAM upgrade is shelved — DDR4-3200 2×8 GB currently
+~$205, not worth it for marginal headroom.
+
+Full sequencing, rollback strategy, and architectural choices (host
+networking, dual cloudflared connectors, etc.) live in
+[decision_log.md §7](docs/decision_log.md).
+
 ## Data pipeline
 
 Disclosures only exist as **PDFs** (House) or **HTML** (Senate) — there is no
@@ -187,6 +207,9 @@ docker-compose.yml  .env
   (deferred).
 - App is publicly reachable at https://goosebase.org via Cloudflare Tunnel
   + Access (email-OTP allowlist). See "Public deployment" above.
+- NUC prepped for app migration (display manager + NordVPN disabled, 2 GB
+  swap, ~2.6 GB available). Migration plan in decision_log §7; execution
+  pending.
 
 ### Project history
 

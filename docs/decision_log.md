@@ -695,6 +695,88 @@ these):
 - Setup conversation: 2026-05-22.
 - Live operational details in [CLAUDE.md](../CLAUDE.md) under "Public deployment".
 
+### Planned migration of the app stack to the NUC (2026-05-22, scoped)
+
+**Why now.** The dev box is online ~16h/day. Moving the user-facing app
+stack (backend + frontend + cloudflared) onto the NUC lets the dev box
+shut off at night without breaking the public URL. The NUC has run
+Postgres for this project from the start and is already 24/7.
+
+**Performance estimate.** The NUC's i5-1240P (12C/16T, 4P + 8E,
+4.4 GHz P-core boost) benches at ~87% of the dev box (Ryzen 5 7600X) on
+single-thread and ~62% on multi-thread (PassMark). Backtest workloads in
+this codebase are mostly single-threaded pandas, so the expected
+wall-clock penalty is ~15–30% — a 30-second backtest becomes 35–45s.
+Loopback DB instead of LAN hop claws back ~5–15 ms per query, so the
+Analysis-view net penalty is smaller still. Bayesian fitting would be
+~1.5–2× slower **and** would OOM at 3.6 GB RAM, so it's explicitly
+staying on the dev box (admin-only invocation anyway).
+
+**NUC headroom prep, executed 2026-05-22:**
+
+| Change | RAM impact | Rationale |
+|---|---|---|
+| Disabled `nodm` + XFCE session; default target → `multi-user.target` | freed ~600 MB | Headless server, no need for a graphical session |
+| Disabled `nordvpnd` + `nordvpnd.socket`; brought down `nordlynx` WireGuard interface | freed ~100 MB + restored direct LAN routing | Had we left the VPN up, cloudflared's outbound to CF edge would have routed through NordVPN — extra latency and DPI risk |
+| Added 2 GB `/swapfile`, `vm.swappiness=10`, persisted in `/etc/fstab` | converts OOM-kill into slow request | 3.6 GB RAM is tight; swap is cheap insurance |
+
+Net before/after: **1.3 GB available → 2.6 GB available**, plus 2 GB
+swap on standby.
+
+**Shelved: RAM upgrade.** The NUC has 3.6 GB physical RAM (effective; the
+remainder is reserved by integrated GPU / firmware). A 2×8 GB DDR4-3200
+SODIMM kit currently runs ~$205 (vs. ~$40 a year ago), which isn't worth
+it for the marginal headroom. Revisit if RAM prices come down or if the
+app evolves to need substantially more memory than the current backend
+profile.
+
+**Migration plan (zero-downtime via dual cloudflared connectors):**
+
+| # | Step | Rollback |
+|---|---|---|
+| 1 | Install Docker + compose plugin on NUC; clone repo; write `.env` with NUC-local `DATABASE_URL` | n/a (prep only) |
+| 2 | Edit `pg_hba.conf` to allow Docker bridge / loopback; reload Postgres | revert hba, reload |
+| 3 | `docker compose up -d --build` on NUC, *omitting* the `db` service (port conflict with native Postgres) | `docker compose down` on NUC |
+| 4 | Install cloudflared on NUC with a **second connector token** bound to the same tunnel | stop NUC cloudflared service |
+| 5 | Verify CF dashboard shows two healthy connectors; smoke-test from phone | n/a |
+| 6 | Stop cloudflared service on dev box. External URL still works via NUC connector alone | `Start-Service cloudflared` on dev box |
+| 7 | Stop docker-compose on dev box. Dev box can now sleep | `docker compose up -d` on dev box |
+
+Cloudflare's tunnel layer load-balances across healthy connectors, which
+is what makes step 4–5 a true zero-downtime cutover: traffic naturally
+shifts between the two as we go, and step 6 just removes one of the two
+healthy paths.
+
+**Architectural choices:**
+- **`network_mode: host` for the backend on the NUC.** Only one app
+  service, so the Docker bridge adds complexity without benefit. Backend
+  reaches Postgres directly at `localhost:5432`, same DSN that admin
+  scripts on the NUC would use.
+- **The compose `db` service is dropped on the NUC.** Postgres is already
+  running natively on `:5432` — the compose service would port-conflict.
+  The "backup copy" role this container played on the dev box is no
+  longer needed once everything is on the NUC anyway.
+- **Image builds happen on the NUC.** First build will be slow (~3–5 min
+  for backend) due to the CPU gap. If backend-code iteration becomes
+  painful, switch to build-on-dev-box / `docker save | ssh nuc docker
+  load`. Not worth it preemptively.
+
+**Wi-Fi caveat.** The NUC is currently on `wlan0`. Cloudflared reconnects
+gracefully on packet loss, but users see occasional 5xx during reconnect.
+Wired ethernet would be a free stability upgrade if a port is available
+near the NUC.
+
+**What still lives where after the migration:**
+
+| Component | Host | Invocation |
+|---|---|---|
+| Postgres + TimescaleDB | NUC (native) | already there |
+| Backend (FastAPI) + Frontend (nginx) | NUC, Docker | `docker compose` |
+| `cloudflared` | NUC, systemd | `systemctl status cloudflared` |
+| Backtest jobs (`POST /api/model/run`) | NUC, in backend container | via the Analysis UI or API |
+| Bayesian fitting (`bayesian_model.py`) | **dev box** | admin-only, run when needed |
+| Ad-hoc CLI (`analyze.py`, one-shot scripts) | either box | depends on whether dev box is on |
+
 ---
 
 ## 8. Methodological choices documented elsewhere
