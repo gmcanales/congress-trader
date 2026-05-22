@@ -637,7 +637,67 @@ database). Tool `train_test_analysis` unless noted.
 
 ---
 
-## 7. Methodological choices documented elsewhere
+## 7. Public deployment via Cloudflare Tunnel + Access (2026-05-22)
+
+**Decision.** Expose the app at a stable, authenticated public URL
+(`https://goosebase.org`) so it can be shared without port-forwarding or
+exposing the NUC. This is an operational decision, not analytical — included
+here because "is the app public?" is a real scope axis future contributors
+will want context on.
+
+**Why Cloudflare Tunnel over alternatives:**
+- **vs. port-forwarding the dev box** — no NAT/firewall changes, no public
+  IP exposure, no DDNS dance, no cert renewal.
+- **vs. ngrok / Tailscale Funnel** — Tunnel gives a stable hostname on a
+  domain we own (collaborator-shareable URL, not a rotating subdomain) plus
+  built-in Access without adding a second product.
+- **vs. moving the app to a VPS** — preserves the "code lives on the dev box,
+  database lives on the NUC" topology that's been working. Nothing in the
+  data path changes.
+
+**Components and why:**
+- **Domain via Cloudflare Registrar** — at-cost pricing, zone is
+  auto-attached to the CF account, no nameserver-change wait.
+- **Named tunnel (token-based, dashboard-managed)** — connector token
+  installed as a Windows service on the dev box via
+  `cloudflared service install <token>`. All ingress config (the Public
+  Hostname rule) lives in the dashboard, not in a local `config.yml`. Chosen
+  over the locally-managed flow because there's exactly one origin and we
+  don't need ingress-as-code.
+- **Public Hostname rule** — `goosebase.org` → `http://localhost:80`
+  (nginx). TLS terminates at the CF edge; the connector→origin hop is plain
+  HTTP, which is the bit the dashboard placeholder gets wrong.
+- **Access policy** — Self-Hosted application bound to the same hostname,
+  one-time-PIN identity provider (zero IdP setup), Allow rule with an
+  explicit email allowlist. Team subdomain
+  `YOUR-TEAM.cloudflareaccess.com`. To add a user: edit the
+  application's policy and add their email — they'll get a 6-digit code by
+  mail on first login.
+
+**Gotchas worth recording** (any future setup of a similar tunnel will hit
+these):
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| HTTP 502 from CF edge with body `error code: 502` | Public Hostname's Service URL is `https://localhost:80`. Origin is plain HTTP; the connector's TLS handshake to nginx fails | Use `http://localhost:80`. The dashboard placeholder example shows `https://`, which is misleading. |
+| `dig`/`nslookup` time out from dev box for the new domain, but DoH works | Outbound port 53 is filtered on this network. System resolver hangs | Bypass for diagnostics: `curl --resolve goosebase.org:443:<CF-edge-IP>` or DoH at `https://cloudflare-dns.com/dns-query`. Not a deployment issue, just a diagnostic snag. |
+| OTP emails not arriving | One-Time PIN provider not enabled at team level (even though the wizard implies it's default) | Zero Trust → Settings → Authentication → Login methods → add One-time PIN |
+| Domain unreachable from collaborators on security-focused VPNs (NordVPN Threat Protection, WARP+Gateway, corporate filters) | Newly-registered domains get DNS-blocked for ~24–72h until threat-intel feeds mark them benign | Wait. Use `https://goosebase.org/cdn-cgi/trace` as a CF-only liveness probe to distinguish "VPN filter" from "tunnel down." |
+
+**What's still NOT deployed:**
+- The NUC database stays LAN-only. No tunnel to `:5432`.
+- No Cloudflare Gateway / WARP enrollment for users.
+- No mTLS or service-token auth — Access uses interactive OTP only.
+- Backend API is reachable only via the same hostname's `/api` prefix
+  (nginx proxies it). No separate API subdomain.
+
+**Cross-refs:**
+- Setup conversation: 2026-05-22.
+- Live operational details in [CLAUDE.md](../CLAUDE.md) under "Public deployment".
+
+---
+
+## 8. Methodological choices documented elsewhere
 
 - [docs/v2_leadership_plan.md](v2_leadership_plan.md) — v2 scope, schema
   design, sequencing, and explicit deferral of cabinet / judges /
@@ -656,7 +716,7 @@ database). Tool `train_test_analysis` unless noted.
 
 ---
 
-## 8. Things explicitly NOT done, and why
+## 9. Things explicitly NOT done, and why
 
 | Considered | Status | Why deferred |
 |---|---|---|
@@ -673,7 +733,7 @@ database). Tool `train_test_analysis` unless noted.
 
 ---
 
-## 9. Where someone picking this up next should look
+## 10. Where someone picking this up next should look
 
 1. **Read this document and `CLAUDE.md`.**
 2. **Open the most recent report** under `reports/` for the rendered

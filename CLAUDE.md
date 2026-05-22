@@ -29,6 +29,31 @@ Open `http://localhost` — two views via the header toggle:
 Dev preview without nginx: `.claude/dev_preview.py` serves the frontend and
 proxies `/api` to `:8000` (used for the preview tooling).
 
+## Public deployment
+
+The app is reachable at **https://goosebase.org**, gated by Cloudflare Access
+(one-time-PIN by email to an explicit allowlist). Domain registered via
+Cloudflare Registrar.
+
+Transport: `cloudflared` runs as a Windows service on the dev box (this host),
+holds a connector token registered to a named tunnel, and its single Public
+Hostname rule maps `goosebase.org` → `http://localhost:80` (nginx). TLS is
+terminated at Cloudflare's edge — the connector → origin hop is plain HTTP,
+which is why the dashboard's `https://localhost:8080` placeholder is wrong
+for this setup. Auth team subdomain: `YOUR-TEAM.cloudflareaccess.com`.
+
+To allow more users: Zero Trust dashboard → Access → Applications → edit
+the app's policy → add their email. (The OTP login method requires no
+identity-provider setup; CF emails a 6-digit code on demand.)
+
+Gotcha worth knowing: newly-registered `.org` domains get DNS-blocked by
+security-focused VPNs (NordVPN Threat Protection, WARP+Gateway, corporate
+filters) for ~24–72h until threat-intel feeds mark them benign. If a
+collaborator can't reach the URL, that's the most likely cause — have them
+try `https://goosebase.org/cdn-cgi/trace` as a CF-only liveness check.
+
+The NUC database (`db.internal.example:5432`) remains LAN-only.
+
 ## Data pipeline
 
 Disclosures only exist as **PDFs** (House) or **HTML** (Senate) — there is no
@@ -160,6 +185,8 @@ docker-compose.yml  .env
   window in our data.
 - Known data gap: ~12% scanned/checkbox-grid filings parse poorly
   (deferred).
+- App is publicly reachable at https://goosebase.org via Cloudflare Tunnel
+  + Access (email-OTP allowlist). See "Public deployment" above.
 
 ### Project history
 
