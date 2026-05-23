@@ -243,38 +243,38 @@
 }
 
 :root[data-palette="retro-gold"] {
-  --bg: #140f09;
-  --surface: #1d1710;
-  --surface2: #2a2117;
+  --bg: #0c0c0e;
+  --surface: #141418;
+  --surface2: #1e1e24;
 
-  --border: #3d2f21;
-  --border-strong: #5a4531;
+  --border: #c8a020;
+  --border-strong: #e8c030;
 
-  --text: #fff5e8;
-  --text-muted: #c2aa89;
-  --text-faint: #8a7459;
+  --text: #eef0f4;
+  --text-muted: #9aa4b0;
+  --text-faint: #5a6470;
 
-  --accent: #f2a46e;
-  --accent-hover: #f6b788;
-  --accent-soft: rgba(242, 164, 110, 0.14);
-  --accent-glow: rgba(242, 164, 110, 0.42);
-  --accent-text: #140f09;
+  --accent: #ffd700;
+  --accent-hover: #ffe040;
+  --accent-soft: rgba(255, 215, 0, 0.14);
+  --accent-glow: rgba(255, 215, 0, 0.52);
+  --accent-text: #0c0c0e;
 
-  --buy: #d8be67;
-  --sell: #dc654e;
-  --warn: #f0bf58;
+  --buy: #ffe040;
+  --sell: #e02040;
+  --warn: #ff8c20;
 
-  --buy-soft: rgba(216, 190, 103, 0.18);
-  --sell-soft: rgba(220, 101, 78, 0.18);
-  --warn-soft: rgba(240, 191, 88, 0.2);
+  --buy-soft: rgba(255, 224, 64, 0.14);
+  --sell-soft: rgba(224, 32, 64, 0.16);
+  --warn-soft: rgba(255, 140, 32, 0.16);
 
-  --chart-line: #f2a46e;
-  --chart-area: rgba(242, 164, 110, 0.12);
+  --chart-line: #ffd700;
+  --chart-area: rgba(255, 215, 0, 0.10);
 
-  --tooltip-bg: rgba(20, 15, 9, 0.96);
+  --tooltip-bg: rgba(12, 12, 14, 0.97);
 
-  --header-glass: rgba(20, 15, 9, 0.6);
-  --header-border: rgba(255, 255, 255, 0.08);
+  --header-glass: rgba(12, 12, 14, 0.70);
+  --header-border: rgba(255, 215, 0, 0.20);
 }
 
 :root[data-palette="cyber-neon"] {
