@@ -15,7 +15,7 @@ from app.database import engine, Base, SessionLocal
 from app import models
 from app.routers import (
     members, transactions, prices, scraper, model, datasets,
-    recommendations, holdings, assets, landing,
+    recommendations, holdings, assets, landing, me,
 )
 from app.services import snapshot as snapshot_service
 
@@ -138,6 +138,7 @@ app.include_router(holdings.router, prefix=prefix)
 app.include_router(assets.reports_router, prefix=prefix)
 app.include_router(assets.docs_router, prefix=prefix)
 app.include_router(landing.router, prefix=prefix)
+app.include_router(me.router, prefix=prefix)
 
 
 @app.get("/health")

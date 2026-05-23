@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     cf_access_team_domain: str = ""
     cf_access_aud: str = ""
     cf_access_dev_user: str = ""
+    # Comma-separated "email:DisplayName" pairs, e.g.
+    #   CF_USER_DISPLAY_NAMES=alice@example.com:Alice,bob@example.com:Bob
+    cf_user_display_names: str = ""
 
     class Config:
         env_file = ".env"

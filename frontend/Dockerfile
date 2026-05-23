@@ -9,6 +9,7 @@ COPY splash-admin.html /usr/share/nginx/html/
 COPY css /usr/share/nginx/html/css
 COPY js /usr/share/nginx/html/js
 COPY img /usr/share/nginx/html/img
+COPY greetings.csv /usr/share/nginx/html/
 
 # Inject cache-busting version into local JS/CSS asset URLs
 RUN find /usr/share/nginx/html -name "*.html" | while read f; do \
