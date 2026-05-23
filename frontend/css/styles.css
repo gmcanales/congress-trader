@@ -895,3 +895,83 @@ input:focus { border-color: var(--accent); }
 
 /* ── Utility ── */
 .hidden { display: none !important; }
+
+/* ── Mobile (≤767px) ── */
+@media (max-width: 767px) {
+  html, body {
+    height: auto;
+    overflow: auto;
+  }
+
+  /* Header: hide title + separator, compress nav */
+  .app-header {
+    padding: 0 10px;
+    height: 48px;
+  }
+  .app-header h1,
+  .header-sep { display: none; }
+  .goosebase-link { font-size: 12px; padding: 4px 6px; }
+  .header-right { gap: 4px; }
+  .nav-btn { font-size: 11px; padding: 4px 8px; }
+
+  /* Layout: stack sidebar above main content */
+  .app-layout {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  /* Sidebar: horizontal strip */
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-y: visible;
+    max-height: none;
+  }
+  .control-section { min-width: 140px; flex: 1 1 140px; }
+
+  /* Main content: let it scroll naturally */
+  .main-content {
+    overflow: visible;
+    height: auto;
+  }
+
+  /* Chart: explicit height so it doesn't collapse */
+  .chart-container {
+    flex: none;
+    height: 56vw;
+    min-height: 220px;
+    max-height: 340px;
+  }
+
+  /* Analysis view: normal scroll */
+  .analysis-view {
+    height: auto;
+    overflow-y: visible;
+    padding: 12px;
+  }
+
+  /* Portfolio form: 2 columns */
+  .port-form {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .port-notes-label { grid-column: span 2; }
+
+  /* Footer links: single column */
+  .recs-footer {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  /* Tables: allow horizontal scroll */
+  .mini-table, #runs-table, .rec-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
