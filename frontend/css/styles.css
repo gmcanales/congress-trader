@@ -11,6 +11,11 @@ html, body {
   overflow: hidden;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Header ── */
 .app-header {
   display: flex;
@@ -100,7 +105,8 @@ html, body {
 /* ── Layout ── */
 .app-layout {
   display: flex;
-  height: calc(100vh - 52px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -530,7 +536,8 @@ input:focus { border-color: var(--accent); }
 .analysis-view {
   padding: 18px;
   overflow-y: auto;
-  height: calc(100vh - 52px);  /* fill viewport below header so overflow-y actually triggers */
+  flex: 1;
+  min-height: 0;
 }
 .analysis-inner {
   max-width: 1100px;
@@ -1022,8 +1029,9 @@ input:focus { border-color: var(--accent); }
   border-top: 1px solid var(--border);
 }
 
-/* ── Chart zoom cursor ── */
-.zoom-capture { cursor: crosshair; }
+/* ── Chart drag pan cursor ── */
+.zoom-capture { cursor: grab; }
+.zoom-capture:active { cursor: grabbing; }
 
 /* ── Pagination ── */
 .pagination {

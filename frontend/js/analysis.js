@@ -95,8 +95,7 @@
     } catch (e) {
       runs = [];
     }
-    // default to last page (most recent 5)
-    runsPage = Math.max(0, Math.ceil(runs.length / RUNS_PAGE_SIZE) - 1);
+    runsPage = 0;
     renderRunsPage();
   }
 

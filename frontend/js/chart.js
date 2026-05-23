@@ -22,7 +22,7 @@ class TradeChart {
     this._drawFocus();
     this._drawContext();
     this._setupBrush();
-    this._setupZoom();
+    this._setupDragPan();
   }
 
   clear() {
@@ -296,24 +296,32 @@ class TradeChart {
     this._drawMarkers();
   }
 
-  _setupZoom() {
+  _setupDragPan() {
     const self = this;
-    const zoom = d3.zoom()
-      .filter(event => event.type === 'wheel')
-      .scaleExtent([1, 100])
-      .on('zoom', (event) => {
-        const newX = event.transform.rescaleX(self.xFull);
-        self.xFocus.domain(newX.domain());
-        const [nx0, nx1] = newX.domain();
-        const visible = self.prices.filter(d => d.date >= nx0 && d.date <= nx1);
-        if (visible.length > 1) {
-          self.yFocus.domain([
-            d3.min(visible, d => d.low) * 0.98,
-            d3.max(visible, d => d.high) * 1.02,
-          ]);
-        }
+    let x0 = null;
+    let domain0 = null;
+
+    const drag = d3.drag()
+      .on('start', function (event) {
+        x0 = event.x;
+        domain0 = self.xFocus.domain().slice();
+      })
+      .on('drag', function (event) {
+        const dx = event.x - x0;
+        const [r0, r1] = self.xFocus.range();
+        const msPerPx = (domain0[1] - domain0[0]) / (r1 - r0);
+        const shift = -dx * msPerPx;
+
+        const [full0, full1] = self.xFull.domain();
+        let d0 = new Date(domain0[0].getTime() + shift);
+        let d1 = new Date(domain0[1].getTime() + shift);
+
+        if (d0 < full0) { const over = full0 - d0; d0 = new Date(full0); d1 = new Date(d1.getTime() + over); }
+        if (d1 > full1) { const over = d1 - full1; d1 = new Date(full1); d0 = new Date(d0.getTime() - over); }
+
+        self.xFocus.domain([d0, d1]);
         self._updateFocus();
-        self.brushG.call(self.brush.move, [self.xCtx(nx0), self.xCtx(nx1)]);
+        self.brushG.call(self.brush.move, [self.xCtx(d0), self.xCtx(d1)]);
       });
 
     this.focus.append('rect')
@@ -321,6 +329,6 @@ class TradeChart {
       .attr('width', this.W)
       .attr('height', this.focusH)
       .attr('fill', 'transparent')
-      .call(zoom);
+      .call(drag);
   }
 }
