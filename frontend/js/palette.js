@@ -20,7 +20,18 @@
  */
 (function () {
   const KEY = 'goosebase.palette';
-  const ALL = new Set(['warmMarsh', 'cleanmeter', 'frankli', 'nightSky', 'sunset']);
+  const ALL = new Set([
+    'warmMarsh',
+    'sunset',
+    'ember-blue',
+    'forest-terminal',
+    'retro-gold',
+    'cyber-neon',
+    'solarized-sand',
+    'cleanmeter',
+    'frankli',
+    'nightSky'
+  ]);
   const DARK = 'warmMarsh';
   const LIGHT = 'frankli';
 

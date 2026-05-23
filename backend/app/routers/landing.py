@@ -1,4 +1,5 @@
 """Landing-page settings: active splash image + active color palette."""
+
 import logging
 import re
 
@@ -19,12 +20,24 @@ DEFAULT_SPLASH = "goose-portrait-master.jpg"
 DEFAULT_PALETTE = "warmMarsh"
 
 # Keep in sync with :root[data-palette=...] selectors in tokens.css.
-ALLOWED_PALETTES = {"warmMarsh", "cleanmeter", "frankli", "nightSky", "sunset"}
+ALLOWED_PALETTES = {
+    "warmMarsh",
+    "sunset",
+    "ember-blue",
+    "forest-terminal",
+    "retro-gold",
+    "cyber-neon",
+    "solarized-sand",
+    "cleanmeter",
+    "frankli",
+    "nightSky",
+}
 
 _PALETTE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,31}$")
 
 
 # ── Splash ──────────────────────────────────────────────────────────
+
 
 class SplashIn(BaseModel):
     image: str
@@ -64,6 +77,7 @@ def set_splash(body: SplashIn):
 
 
 # ── Palette ─────────────────────────────────────────────────────────
+
 
 class PaletteIn(BaseModel):
     name: str
