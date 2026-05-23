@@ -21,3 +21,12 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value      JSONB NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- Per-user portfolio scoping. Backfill existing rows to the sole user
+-- before this change (gmcanales / owner@example.com), then lock the
+-- column. Identity source is the verified CF Access JWT email — see
+-- backend/app/auth.py.
+ALTER TABLE user_holdings ADD COLUMN IF NOT EXISTS user_email TEXT;
+UPDATE user_holdings SET user_email = 'owner@example.com' WHERE user_email IS NULL;
+ALTER TABLE user_holdings ALTER COLUMN user_email SET NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_user_holdings_user_email ON user_holdings(user_email);

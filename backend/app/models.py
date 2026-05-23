@@ -216,14 +216,14 @@ class RecommendationSnapshot(Base):
 
 class UserHolding(Base):
     """A position the user currently (or historically) holds, tracked
-    in the frontend portfolio. No auth: this is a single-user app, so
-    there is no `user_id`. The user is responsible for keeping it
-    accurate. `cost_basis` is per-share, in the same currency as
-    `price_bars.close`.
+    in the frontend portfolio. Scoped per-user by `user_email` — the
+    verified CF Access JWT email (see backend/app/auth.py). `cost_basis`
+    is per-share, in the same currency as `price_bars.close`.
     """
     __tablename__ = "user_holdings"
 
     id = Column(Integer, primary_key=True)
+    user_email = Column(String, nullable=False, index=True)
     ticker = Column(String, nullable=False, index=True)
     shares = Column(Float, nullable=False)
     cost_basis = Column(Float, nullable=False)   # per-share

@@ -24,6 +24,10 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REPORTS_DIR: /reports
       DOCS_DIR: /docs
+      # Cloudflare Access — per-user portfolio scoping (see backend/app/auth.py)
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      CF_ACCESS_DEV_USER: ${CF_ACCESS_DEV_USER:-}
     volumes:
       # Read-only mounts so the API can list/serve generated reports and project docs
       - ./reports:/reports:ro

@@ -6,8 +6,13 @@
   POST   /api/holdings/         → create one holding
   PATCH  /api/holdings/{id}     → partial update
   DELETE /api/holdings/{id}     → delete one holding
+  GET    /api/holdings/nav      → portfolio NAV time series
+  POST   /api/holdings/upload   → bulk CSV upload
 
-No auth — this is a single-user local app. The user owns the data.
+Every endpoint that touches user data is scoped by the verified CF Access
+JWT email (`current_user_email` dependency in app/auth.py). PATCH and
+DELETE return 404 for rows owned by another user — no info-leak on
+ownership.
 """
 from __future__ import annotations
 
@@ -23,6 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.auth import current_user_email
 from app.database import get_db, SessionLocal
 from app import models
 from app.services.backtest import ensure_prices, _close_series
@@ -100,10 +106,28 @@ def _serialize(h: models.UserHolding, db: Session) -> dict:
     }
 
 
+def _owned_holding(db: Session, holding_id: int, email: str) -> models.UserHolding:
+    """Fetch a holding only if the caller owns it. 404 otherwise so that
+    'not yours' and 'not found' are indistinguishable to the caller."""
+    h = (
+        db.query(models.UserHolding)
+        .filter(models.UserHolding.id == holding_id,
+                models.UserHolding.user_email == email)
+        .first()
+    )
+    if not h:
+        raise HTTPException(status_code=404, detail="holding not found")
+    return h
+
+
 @router.get("/")
-def list_holdings(db: Session = Depends(get_db)):
+def list_holdings(
+    db: Session = Depends(get_db),
+    email: str = Depends(current_user_email),
+):
     rows = (
         db.query(models.UserHolding)
+        .filter(models.UserHolding.user_email == email)
         .order_by(models.UserHolding.buy_date.desc())
         .all()
     )
@@ -111,12 +135,17 @@ def list_holdings(db: Session = Depends(get_db)):
 
 
 @router.post("/")
-def create_holding(payload: HoldingIn, db: Session = Depends(get_db)):
+def create_holding(
+    payload: HoldingIn,
+    db: Session = Depends(get_db),
+    email: str = Depends(current_user_email),
+):
     if payload.shares <= 0:
         raise HTTPException(status_code=400, detail="shares must be > 0")
     if payload.cost_basis < 0:
         raise HTTPException(status_code=400, detail="cost_basis must be ≥ 0")
     h = models.UserHolding(
+        user_email=email,
         ticker=payload.ticker.upper().strip(),
         shares=payload.shares,
         cost_basis=payload.cost_basis,
@@ -132,10 +161,13 @@ def create_holding(payload: HoldingIn, db: Session = Depends(get_db)):
 
 
 @router.patch("/{holding_id}")
-def patch_holding(holding_id: int, patch: HoldingPatch, db: Session = Depends(get_db)):
-    h = db.get(models.UserHolding, holding_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="holding not found")
+def patch_holding(
+    holding_id: int,
+    patch: HoldingPatch,
+    db: Session = Depends(get_db),
+    email: str = Depends(current_user_email),
+):
+    h = _owned_holding(db, holding_id, email)
     data = patch.model_dump(exclude_unset=True)
     if "ticker" in data and data["ticker"] is not None:
         data["ticker"] = data["ticker"].upper().strip()
@@ -148,10 +180,12 @@ def patch_holding(holding_id: int, patch: HoldingPatch, db: Session = Depends(ge
 
 
 @router.delete("/{holding_id}")
-def delete_holding(holding_id: int, db: Session = Depends(get_db)):
-    h = db.get(models.UserHolding, holding_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="holding not found")
+def delete_holding(
+    holding_id: int,
+    db: Session = Depends(get_db),
+    email: str = Depends(current_user_email),
+):
+    h = _owned_holding(db, holding_id, email)
     db.delete(h)
     db.commit()
     return {"deleted": holding_id}
@@ -163,6 +197,7 @@ def delete_holding(holding_id: int, db: Session = Depends(get_db)):
 def portfolio_nav(
     start: date = Query(..., description="Series start (YYYY-MM-DD)"),
     end: date = Query(..., description="Series end (YYYY-MM-DD)"),
+    email: str = Depends(current_user_email),
 ):
     """Daily NAV of the user's portfolio over [start, end]. NAV(t) is
     `market_value(t) / cumulative_invested(t)` where:
@@ -178,7 +213,11 @@ def portfolio_nav(
     """
     db = SessionLocal()
     try:
-        holdings = db.query(models.UserHolding).all()
+        holdings = (
+            db.query(models.UserHolding)
+            .filter(models.UserHolding.user_email == email)
+            .all()
+        )
         if not holdings:
             return {"start": start.isoformat(), "end": end.isoformat(),
                     "series": [], "note": "no holdings"}
@@ -289,6 +328,7 @@ async def upload_csv(
                     "`replace_by_ticker` deletes any existing holding with the "
                     "same ticker first."),
     db: Session = Depends(get_db),
+    email: str = Depends(current_user_email),
 ):
     """Bulk-create holdings from a CSV. Returns per-row outcome so the user
     can tell which rows failed validation. Does NOT abort the whole upload
@@ -335,10 +375,12 @@ async def upload_csv(
 
             if mode == "replace_by_ticker":
                 (db.query(models.UserHolding)
-                    .filter(models.UserHolding.ticker == ticker)
+                    .filter(models.UserHolding.ticker == ticker,
+                            models.UserHolding.user_email == email)
                     .delete(synchronize_session=False))
 
             h = models.UserHolding(
+                user_email=email,
                 ticker=ticker, shares=shares, cost_basis=cost_basis,
                 buy_date=buy_date, notes=notes,
                 target_exit_price=tgt_px, target_exit_date=tgt_date,

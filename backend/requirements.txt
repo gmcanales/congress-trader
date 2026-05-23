@@ -21,3 +21,4 @@ pyarrow==17.0.0
 apscheduler==3.10.4
 tzdata==2024.1
 python-multipart==0.0.9
+pyjwt[crypto]==2.8.0
