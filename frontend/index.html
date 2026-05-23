@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,11 +11,12 @@
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
+
 <body>
   <header class="app-header">
     <div class="header-left">
       <a href="/" class="goosebase-link" title="Back to Goosebase">
-        <span class="brand-mark">◐</span>
+        <span class="brand-mark">𓅮</span>
         <span class="goosebase-name">Goosebase</span>
       </a>
       <span class="header-sep">/</span>
@@ -26,9 +28,24 @@
         <button id="nav-analysis" class="nav-btn">Analysis</button>
         <button id="nav-recs" class="nav-btn">Recommendations</button>
       </nav>
-      <button class="theme-toggle" data-goosebase-toggle type="button" aria-label="Toggle dark/light theme" title="Toggle theme">
-        <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.93 19.07 1.41-1.41"/><path d="m17.66 6.34 1.41-1.41"/></svg>
-        <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <button class="theme-toggle" data-goosebase-toggle type="button" aria-label="Toggle dark/light theme"
+        title="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2" />
+          <path d="M12 20v2" />
+          <path d="m4.93 4.93 1.41 1.41" />
+          <path d="m17.66 17.66 1.41 1.41" />
+          <path d="M2 12h2" />
+          <path d="M20 12h2" />
+          <path d="m4.93 19.07 1.41-1.41" />
+          <path d="m17.66 6.34 1.41-1.41" />
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
       </button>
       <button id="admin-toggle" class="btn-ghost">Admin</button>
     </div>
@@ -173,13 +190,15 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h3>Run Analysis</h3></div>
+        <div class="panel-head">
+          <h3>Run Analysis</h3>
+        </div>
         <div class="run-form">
           <label>Dataset<select id="run-dataset"></select></label>
           <label>Event anchor<select id="run-datefield">
-            <option value="filing_date">filing_date</option>
-            <option value="transaction_date">transaction_date</option>
-          </select></label>
+              <option value="filing_date">filing_date</option>
+              <option value="transaction_date">transaction_date</option>
+            </select></label>
           <label>Train start<input type="date" id="run-train-start" value="2021-01-01"></label>
           <label>Train end<input type="date" id="run-train-end" value="2024-12-31"></label>
           <label>Test start<input type="date" id="run-test-start" value="2025-01-01"></label>
@@ -193,21 +212,33 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h3>Analysis Runs</h3></div>
+        <div class="panel-head">
+          <h3>Analysis Runs</h3>
+        </div>
         <div class="tx-table-scroll">
           <table id="runs-table">
-            <thead><tr>
-              <th>#</th><th>Created</th><th>Dataset</th><th>Anchor</th>
-              <th>Selected</th><th>Train excess</th><th>OOS excess</th>
-              <th>Overfit gap</th><th>Status</th>
-            </tr></thead>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Created</th>
+                <th>Dataset</th>
+                <th>Anchor</th>
+                <th>Selected</th>
+                <th>Train excess</th>
+                <th>OOS excess</th>
+                <th>Overfit gap</th>
+                <th>Status</th>
+              </tr>
+            </thead>
             <tbody id="runs-tbody"></tbody>
           </table>
         </div>
       </div>
 
       <div id="run-detail" class="panel hidden">
-        <div class="panel-head"><h3 id="run-detail-title">Run Detail</h3></div>
+        <div class="panel-head">
+          <h3 id="run-detail-title">Run Detail</h3>
+        </div>
         <div id="run-detail-body"></div>
       </div>
 
@@ -220,7 +251,9 @@
       <div class="panel">
         <div class="panel-head">
           <h3>Your Portfolio <span id="port-count" class="tx-count"></span></h3>
-          <span class="recs-subtitle">Track your actual holdings — overlaid in <b style="color:#ff3b3b">bold red</b> on the Strategy Comparison chart below, and tagged against the strategy's view (held / closing today / new buy signal).</span>
+          <span class="recs-subtitle">Track your actual holdings — overlaid in <b style="color:#ff3b3b">bold red</b> on
+            the Strategy Comparison chart below, and tagged against the strategy's view (held / closing today / new buy
+            signal).</span>
         </div>
 
         <form id="port-form" class="port-form">
@@ -238,7 +271,8 @@
             <div class="port-csv-actions">
               <input type="file" id="port-csv-file" accept=".csv,text/csv" class="hidden">
               <button type="button" id="port-csv-pick-btn" class="btn-ghost">Bulk upload CSV…</button>
-              <select id="port-csv-mode" class="mini-select" title="Replace by ticker deletes any existing row with the same ticker before insert.">
+              <select id="port-csv-mode" class="mini-select"
+                title="Replace by ticker deletes any existing row with the same ticker before insert.">
                 <option value="append" selected>append</option>
                 <option value="replace_by_ticker">replace by ticker</option>
               </select>
@@ -250,14 +284,21 @@
 
         <div class="rec-table-scroll port-table-scroll">
           <table class="rec-table port-table">
-            <thead><tr>
-              <th>Ticker</th><th>Shares</th>
-              <th>Cost $</th><th>Current $</th>
-              <th>Value</th><th>Unrealized</th>
-              <th>Days held</th><th>Target</th>
-              <th>Strategy view</th><th>Notes</th>
-              <th></th>
-            </tr></thead>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Shares</th>
+                <th>Cost $</th>
+                <th>Current $</th>
+                <th>Value</th>
+                <th>Unrealized</th>
+                <th>Days held</th>
+                <th>Target</th>
+                <th>Strategy view</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody id="port-tbody"></tbody>
           </table>
         </div>
@@ -265,7 +306,8 @@
 
       <div class="panel">
         <div class="panel-head">
-          <h3>Strategy Comparison <span class="recs-subtitle">Out-of-sample NAV for the three risk profiles, with rolling daily-vol shade. Your portfolio is overlaid in bold red.</span></h3>
+          <h3>Strategy Comparison <span class="recs-subtitle">Out-of-sample NAV for the three risk profiles, with
+              rolling daily-vol shade. Your portfolio is overlaid in bold red.</span></h3>
           <div class="strat-controls">
             <label>σ band <input type="number" id="strat-band-k" value="1" min="0" max="5" step="0.5"></label>
             <label>Window <input type="number" id="strat-band-window" value="21" min="2" max="252"></label>
@@ -282,7 +324,8 @@
       <div class="panel">
         <div class="panel-head">
           <h3>Strategy Recommendations</h3>
-          <span class="recs-subtitle">Today's view of what the strategy would open, hold, or close based on congressional disclosures.</span>
+          <span class="recs-subtitle">Today's view of what the strategy would open, hold, or close based on
+            congressional disclosures.</span>
         </div>
         <div class="rec-form">
           <label>Risk profile
@@ -308,56 +351,84 @@
           <h3>Strategy Config</h3>
           <div class="cache-controls">
             <span id="rec-cache-tag" class="cache-tag"></span>
-            <button id="rec-refresh-cache" class="btn-ghost" title="Recompute all profiles' snapshots now (runs in background)">Refresh cache</button>
+            <button id="rec-refresh-cache" class="btn-ghost"
+              title="Recompute all profiles' snapshots now (runs in background)">Refresh cache</button>
           </div>
         </div>
-        <div id="rec-config" class="rec-config-box">No recommendations yet — pick a risk profile and click Get Recommendations.</div>
+        <div id="rec-config" class="rec-config-box">No recommendations yet — pick a risk profile and click Get
+          Recommendations.</div>
       </div>
 
       <div class="rec-three-col">
         <div class="panel rec-col">
-          <div class="panel-head"><h3>Open Today <span id="rec-open-count" class="tx-count"></span></h3></div>
-          <p class="rec-help">New entries: the strategy would open these positions because the buy filed today (or within the new-window).</p>
+          <div class="panel-head">
+            <h3>Open Today <span id="rec-open-count" class="tx-count"></span></h3>
+          </div>
+          <p class="rec-help">New entries: the strategy would open these positions because the buy filed today (or
+            within the new-window).</p>
           <div class="rec-table-scroll">
             <table class="rec-table">
-              <thead><tr>
-                <th>Ticker</th><th>Member</th><th>Party</th>
-                <th>Filing date</th><th>Days ago</th>
-                <th>Entry $</th><th>Current $</th><th>Return</th>
-                <th>β</th><th>Eff. stop %</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Member</th>
+                  <th>Party</th>
+                  <th>Filing date</th>
+                  <th>Days ago</th>
+                  <th>Entry $</th>
+                  <th>Current $</th>
+                  <th>Return</th>
+                  <th>β</th>
+                  <th>Eff. stop %</th>
+                </tr>
+              </thead>
               <tbody id="rec-open-tbody"></tbody>
             </table>
           </div>
         </div>
 
         <div class="panel rec-col">
-          <div class="panel-head"><h3>Currently Holding <span id="rec-hold-count" class="tx-count"></span></h3></div>
+          <div class="panel-head">
+            <h3>Currently Holding <span id="rec-hold-count" class="tx-count"></span></h3>
+          </div>
           <p class="rec-help">Positions already in the portfolio that haven't hit any exit condition.</p>
           <div class="rec-table-scroll">
             <table class="rec-table">
-              <thead><tr>
-                <th>Ticker</th><th>Member</th>
-                <th>Entry</th><th>Days held</th>
-                <th>Return</th><th>DD from peak</th>
-                <th>Eff. stop %</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Member</th>
+                  <th>Entry</th>
+                  <th>Days held</th>
+                  <th>Return</th>
+                  <th>DD from peak</th>
+                  <th>Eff. stop %</th>
+                </tr>
+              </thead>
               <tbody id="rec-hold-tbody"></tbody>
             </table>
           </div>
         </div>
 
         <div class="panel rec-col">
-          <div class="panel-head"><h3>Close Today <span id="rec-close-count" class="tx-count"></span></h3></div>
-          <p class="rec-help">Exit signal fires on the as-of date: mirror sale, trailing-stop hit, or time-stop fallback.</p>
+          <div class="panel-head">
+            <h3>Close Today <span id="rec-close-count" class="tx-count"></span></h3>
+          </div>
+          <p class="rec-help">Exit signal fires on the as-of date: mirror sale, trailing-stop hit, or time-stop
+            fallback.</p>
           <div class="rec-table-scroll">
             <table class="rec-table">
-              <thead><tr>
-                <th>Ticker</th><th>Member</th>
-                <th>Exit reason</th><th>Entry</th>
-                <th>Exit $</th><th>Realized</th>
-                <th>Days held</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Member</th>
+                  <th>Exit reason</th>
+                  <th>Entry</th>
+                  <th>Exit $</th>
+                  <th>Realized</th>
+                  <th>Days held</th>
+                </tr>
+              </thead>
               <tbody id="rec-close-tbody"></tbody>
             </table>
           </div>
@@ -367,16 +438,21 @@
       <footer class="recs-footer">
         <div class="footer-col">
           <h4>Reports</h4>
-          <ul id="footer-reports" class="footer-links"><li class="muted">loading…</li></ul>
+          <ul id="footer-reports" class="footer-links">
+            <li class="muted">loading…</li>
+          </ul>
         </div>
         <div class="footer-col">
           <h4>Documentation</h4>
-          <ul id="footer-docs" class="footer-links"><li class="muted">loading…</li></ul>
+          <ul id="footer-docs" class="footer-links">
+            <li class="muted">loading…</li>
+          </ul>
         </div>
         <div class="footer-col">
           <h4>Project</h4>
           <ul class="footer-links">
-            <li><a href="https://github.com/anthropics/claude-code/issues" target="_blank" rel="noopener">File an issue</a></li>
+            <li><a href="https://github.com/anthropics/claude-code/issues" target="_blank" rel="noopener">File an
+                issue</a></li>
             <li><a href="/api/recommendations/cache" target="_blank" rel="noopener">Cache status (JSON)</a></li>
             <li><a href="/api/model/runs" target="_blank" rel="noopener">All analysis runs (JSON)</a></li>
           </ul>
@@ -393,4 +469,5 @@
   <script src="js/analysis.js"></script>
   <script src="js/recommendations.js"></script>
 </body>
+
 </html>

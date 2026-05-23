@@ -9,165 +9,340 @@
 
 :root {
   /* — Surfaces — */
-  --bg:        #0f0d0a;
-  --surface:   #18130d;
-  --surface2:  #221a12;
-  --border:    #2e251a;
+  --bg: #0f0d0a;
+  --surface: #18130d;
+  --surface2: #221a12;
+  --border: #2e251a;
   --border-strong: #3d3122;
 
   /* — Text — */
-  --text:       #ede4d3;
+  --text: #ede4d3;
   --text-muted: #8a7d68;
   --text-faint: #5a4f3e;
   /* Hero text always sits on top of the painting, so it needs to stay
    * legible regardless of the palette. Light palettes override this. */
-  --hero-text:  var(--text);
+  --hero-text: var(--text);
 
   /* — Brand / accent — */
-  --accent:        #5fb4a8;
-  --accent-hover:  #7ed1c5;
-  --accent-soft:   rgba(95,180,168,0.14);
-  --accent-glow:   rgba(95,180,168,0.35);
-  --accent-text:   #0b0907;
+  --accent: #5fb4a8;
+  --accent-hover: #7ed1c5;
+  --accent-soft: rgba(95, 180, 168, 0.14);
+  --accent-glow: rgba(95, 180, 168, 0.35);
+  --accent-text: #0b0907;
 
   /* — Semantic — */
-  --buy:  #6fbf72;
+  --buy: #6fbf72;
   --sell: #e87060;
   --warn: #d6a936;
-  --buy-soft:  rgba(111,191,114,0.18);
-  --sell-soft: rgba(232,112,96,0.18);
-  --warn-soft: rgba(214,169,54,0.18);
+  --buy-soft: rgba(111, 191, 114, 0.18);
+  --sell-soft: rgba(232, 112, 96, 0.18);
+  --warn-soft: rgba(214, 169, 54, 0.18);
 
   /* — Charts — */
   --chart-line: #5fb4a8;
-  --chart-area: rgba(95,180,168,0.10);
-  --tooltip-bg: rgba(15,13,10,0.95);
+  --chart-area: rgba(95, 180, 168, 0.10);
+  --tooltip-bg: rgba(15, 13, 10, 0.95);
 
   /* — Composition — */
-  --header-glass: rgba(15,13,10,0.55);
-  --header-border: rgba(255,255,255,0.06);
+  --header-glass: rgba(15, 13, 10, 0.55);
+  --header-border: rgba(255, 255, 255, 0.06);
 
   /* — Shape — */
-  --radius:    6px;
+  --radius: 6px;
   --radius-lg: 12px;
 
   /* — Type — */
   --font-display: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-body:    'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono:    ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  --font-body: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
 }
 
 /* — Cleanmeter: vivid cyan on near-black, gaming/tech ─────────────── */
 :root[data-palette="cleanmeter"] {
-  --bg:        #07090e;
-  --surface:   #0e131c;
-  --surface2:  #161e2b;
-  --border:    #1f2a3c;
+  --bg: #07090e;
+  --surface: #0e131c;
+  --surface2: #161e2b;
+  --border: #1f2a3c;
   --border-strong: #2d3a52;
-  --text:       #e6edf7;
+  --text: #e6edf7;
   --text-muted: #758197;
   --text-faint: #4a5468;
-  --accent:        #00e5c8;
-  --accent-hover:  #4ff5dc;
-  --accent-soft:   rgba(0,229,200,0.12);
-  --accent-glow:   rgba(0,229,200,0.55);
-  --accent-text:   #07090e;
-  --buy:  #2bd07c;
+  --accent: #00e5c8;
+  --accent-hover: #4ff5dc;
+  --accent-soft: rgba(0, 229, 200, 0.12);
+  --accent-glow: rgba(0, 229, 200, 0.55);
+  --accent-text: #07090e;
+  --buy: #2bd07c;
   --sell: #ff4d6e;
   --warn: #ffbb33;
-  --buy-soft:  rgba(43,208,124,0.18);
-  --sell-soft: rgba(255,77,110,0.18);
-  --warn-soft: rgba(255,187,51,0.18);
+  --buy-soft: rgba(43, 208, 124, 0.18);
+  --sell-soft: rgba(255, 77, 110, 0.18);
+  --warn-soft: rgba(255, 187, 51, 0.18);
   --chart-line: #00e5c8;
-  --chart-area: rgba(0,229,200,0.12);
-  --tooltip-bg: rgba(7,9,14,0.95);
-  --header-glass: rgba(7,9,14,0.65);
-  --header-border: rgba(255,255,255,0.07);
+  --chart-area: rgba(0, 229, 200, 0.12);
+  --tooltip-bg: rgba(7, 9, 14, 0.95);
+  --header-glass: rgba(7, 9, 14, 0.65);
+  --header-border: rgba(255, 255, 255, 0.07);
 }
 
 /* — Frankli: warm cream + coral, light theme inspired by getfrankli ─ */
 :root[data-palette="frankli"] {
-  --bg:        #fdf6ec;
-  --surface:   #ffffff;
-  --surface2:  #f5ecdb;
-  --border:    #e6dac3;
+  --bg: #fdf6ec;
+  --surface: #ffffff;
+  --surface2: #f5ecdb;
+  --border: #e6dac3;
   --border-strong: #ccb893;
-  --text:       #1a1f2e;
+  --text: #1a1f2e;
   --text-muted: #5d6373;
   --text-faint: #99a0b0;
   /* Painting is dark/atmospheric — keep hero text near-white even though
    * the rest of this palette is light. */
-  --hero-text:  #fdf6ec;
-  --accent:        #f56c3a;
-  --accent-hover:  #ff8456;
-  --accent-soft:   rgba(245,108,58,0.12);
-  --accent-glow:   rgba(245,108,58,0.32);
-  --accent-text:   #ffffff;
-  --buy:  #2f9e44;
+  --hero-text: #fdf6ec;
+  --accent: #f56c3a;
+  --accent-hover: #ff8456;
+  --accent-soft: rgba(245, 108, 58, 0.12);
+  --accent-glow: rgba(245, 108, 58, 0.32);
+  --accent-text: #ffffff;
+  --buy: #2f9e44;
   --sell: #d63b3b;
   --warn: #d68a1f;
-  --buy-soft:  rgba(47,158,68,0.14);
-  --sell-soft: rgba(214,59,59,0.14);
-  --warn-soft: rgba(214,138,31,0.16);
+  --buy-soft: rgba(47, 158, 68, 0.14);
+  --sell-soft: rgba(214, 59, 59, 0.14);
+  --warn-soft: rgba(214, 138, 31, 0.16);
   --chart-line: #f56c3a;
-  --chart-area: rgba(245,108,58,0.10);
-  --tooltip-bg: rgba(26,31,46,0.95);
-  --header-glass: rgba(253,246,236,0.72);
-  --header-border: rgba(26,31,46,0.08);
+  --chart-area: rgba(245, 108, 58, 0.10);
+  --tooltip-bg: #ffffff;
+  --header-glass: rgba(253, 246, 236, 0.72);
+  --header-border: rgba(26, 31, 46, 0.08);
 }
 
 /* — Night Sky: cool dark + GitHub-blue accent ──────────────────────── */
 :root[data-palette="nightSky"] {
-  --bg:        #0d1117;
-  --surface:   #161b22;
-  --surface2:  #1f2937;
-  --border:    #30363d;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #1f2937;
+  --border: #30363d;
   --border-strong: #444c56;
-  --text:       #e6edf3;
+  --text: #e6edf3;
   --text-muted: #8b949e;
   --text-faint: #586069;
-  --accent:        #58a6ff;
-  --accent-hover:  #79b8ff;
-  --accent-soft:   rgba(88,166,255,0.12);
-  --accent-glow:   rgba(88,166,255,0.4);
-  --accent-text:   #0d1117;
-  --buy:  #3fb950;
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
+  --accent-soft: rgba(88, 166, 255, 0.12);
+  --accent-glow: rgba(88, 166, 255, 0.4);
+  --accent-text: #0d1117;
+  --buy: #3fb950;
   --sell: #f85149;
   --warn: #d29922;
-  --buy-soft:  rgba(63,185,80,0.18);
-  --sell-soft: rgba(248,81,73,0.18);
-  --warn-soft: rgba(210,153,34,0.18);
+  --buy-soft: rgba(63, 185, 80, 0.18);
+  --sell-soft: rgba(248, 81, 73, 0.18);
+  --warn-soft: rgba(210, 153, 34, 0.18);
   --chart-line: #58a6ff;
-  --chart-area: rgba(88,166,255,0.10);
-  --tooltip-bg: rgba(13,17,23,0.95);
-  --header-glass: rgba(13,17,23,0.6);
-  --header-border: rgba(255,255,255,0.06);
+  --chart-area: rgba(88, 166, 255, 0.10);
+  --tooltip-bg: rgba(13, 17, 23, 0.95);
+  --header-glass: rgba(13, 17, 23, 0.6);
+  --header-border: rgba(255, 255, 255, 0.06);
 }
 
 /* — Sunset: rich warm dark + coral ─────────────────────────────────── */
 :root[data-palette="sunset"] {
-  --bg:        #160a05;
-  --surface:   #211008;
-  --surface2:  #2e1810;
-  --border:    #3a2418;
+  --bg: #160a05;
+  --surface: #211008;
+  --surface2: #2e1810;
+  --border: #3a2418;
   --border-strong: #523222;
-  --text:       #fff2dd;
+  --text: #fff2dd;
   --text-muted: #b89878;
   --text-faint: #7a6248;
-  --accent:        #ff7849;
-  --accent-hover:  #ff9166;
-  --accent-soft:   rgba(255,120,73,0.13);
-  --accent-glow:   rgba(255,120,73,0.45);
-  --accent-text:   #160a05;
-  --buy:  #d3b85c;
+  --accent: #ff7849;
+  --accent-hover: #ff9166;
+  --accent-soft: rgba(255, 120, 73, 0.13);
+  --accent-glow: rgba(255, 120, 73, 0.45);
+  --accent-text: #160a05;
+  --buy: #d3b85c;
   --sell: #e8553a;
   --warn: #f4b042;
-  --buy-soft:  rgba(211,184,92,0.18);
-  --sell-soft: rgba(232,85,58,0.18);
-  --warn-soft: rgba(244,176,66,0.2);
+  --buy-soft: rgba(211, 184, 92, 0.18);
+  --sell-soft: rgba(232, 85, 58, 0.18);
+  --warn-soft: rgba(244, 176, 66, 0.2);
   --chart-line: #ff7849;
-  --chart-area: rgba(255,120,73,0.12);
-  --tooltip-bg: rgba(22,10,5,0.95);
-  --header-glass: rgba(22,10,5,0.6);
-  --header-border: rgba(255,255,255,0.08);
+  --chart-area: rgba(255, 120, 73, 0.12);
+  --tooltip-bg: rgba(22, 10, 5, 0.95);
+  --header-glass: rgba(22, 10, 5, 0.6);
+  --header-border: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-palette="ember-blue"] {
+  --bg: #08111b;
+  --surface: #0f1b29;
+  --surface2: #162738;
+
+  --border: #24384c;
+  --border-strong: #34516d;
+
+  --text: #eef7ff;
+  --text-muted: #9eb4c8;
+  --text-faint: #62778d;
+
+  --accent: #5ca4ef;
+  --accent-hover: #7ab8f5;
+  --accent-soft: rgba(92, 164, 239, 0.14);
+  --accent-glow: rgba(92, 164, 239, 0.4);
+  --accent-text: #08111b;
+
+  --buy: #5fd49c;
+  --sell: #ef6b6b;
+  --warn: #f4c168;
+
+  --buy-soft: rgba(95, 212, 156, 0.18);
+  --sell-soft: rgba(239, 107, 107, 0.18);
+  --warn-soft: rgba(244, 193, 104, 0.2);
+
+  --chart-line: #5ca4ef;
+  --chart-area: rgba(92, 164, 239, 0.12);
+
+  --tooltip-bg: rgba(8, 17, 27, 0.95);
+
+  --header-glass: rgba(8, 17, 27, 0.65);
+  --header-border: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-palette="forest-terminal"] {
+  --bg: #0d1512;
+  --surface: #15201b;
+  --surface2: #1d2b24;
+
+  --border: #2d4338;
+  --border-strong: #40604f;
+
+  --text: #eef8f1;
+  --text-muted: #a7c0b0;
+  --text-faint: #708474;
+
+  --accent: #6fcf97;
+  --accent-hover: #8adcad;
+  --accent-soft: rgba(111, 207, 151, 0.14);
+  --accent-glow: rgba(111, 207, 151, 0.42);
+  --accent-text: #08110d;
+
+  --buy: #9fe870;
+  --sell: #ea6b5f;
+  --warn: #e5bc63;
+
+  --buy-soft: rgba(159, 232, 112, 0.16);
+  --sell-soft: rgba(234, 107, 95, 0.18);
+  --warn-soft: rgba(229, 188, 99, 0.18);
+
+  --chart-line: #6fcf97;
+  --chart-area: rgba(111, 207, 151, 0.1);
+
+  --tooltip-bg: rgba(13, 21, 18, 0.95);
+
+  --header-glass: rgba(13, 21, 18, 0.62);
+  --header-border: rgba(255, 255, 255, 0.07);
+}
+
+:root[data-palette="retro-gold"] {
+  --bg: #140f09;
+  --surface: #1d1710;
+  --surface2: #2a2117;
+
+  --border: #3d2f21;
+  --border-strong: #5a4531;
+
+  --text: #fff5e8;
+  --text-muted: #c2aa89;
+  --text-faint: #8a7459;
+
+  --accent: #f2a46e;
+  --accent-hover: #f6b788;
+  --accent-soft: rgba(242, 164, 110, 0.14);
+  --accent-glow: rgba(242, 164, 110, 0.42);
+  --accent-text: #140f09;
+
+  --buy: #d8be67;
+  --sell: #dc654e;
+  --warn: #f0bf58;
+
+  --buy-soft: rgba(216, 190, 103, 0.18);
+  --sell-soft: rgba(220, 101, 78, 0.18);
+  --warn-soft: rgba(240, 191, 88, 0.2);
+
+  --chart-line: #f2a46e;
+  --chart-area: rgba(242, 164, 110, 0.12);
+
+  --tooltip-bg: rgba(20, 15, 9, 0.96);
+
+  --header-glass: rgba(20, 15, 9, 0.6);
+  --header-border: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-palette="cyber-neon"] {
+  --bg: #090909;
+  --surface: #121212;
+  --surface2: #1a1a1a;
+
+  --border: #2b2b2b;
+  --border-strong: #3c3c3c;
+
+  --text: #fafafa;
+  --text-muted: #b6b6b6;
+  --text-faint: #7a7a7a;
+
+  --accent: #96ffe3;
+  --accent-hover: #b0ffea;
+  --accent-soft: rgba(150, 255, 227, 0.14);
+  --accent-glow: rgba(150, 255, 227, 0.45);
+  --accent-text: #0a0a0a;
+
+  --buy: #8effa0;
+  --sell: #ff6d8d;
+  --warn: #ffd166;
+
+  --buy-soft: rgba(142, 255, 160, 0.15);
+  --sell-soft: rgba(255, 109, 141, 0.16);
+  --warn-soft: rgba(255, 209, 102, 0.18);
+
+  --chart-line: #96ffe3;
+  --chart-area: rgba(150, 255, 227, 0.1);
+
+  --tooltip-bg: rgba(9, 9, 9, 0.96);
+
+  --header-glass: rgba(9, 9, 9, 0.65);
+  --header-border: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-palette="solarized-sand"] {
+  --bg: #1a1612;
+  --surface: #241e19;
+  --surface2: #312923;
+
+  --border: #433830;
+  --border-strong: #5d4d42;
+
+  --text: #f8f1e7;
+  --text-muted: #b9a897;
+  --text-faint: #847567;
+
+  --accent: #d8a15d;
+  --accent-hover: #e2b476;
+  --accent-soft: rgba(216, 161, 93, 0.14);
+  --accent-glow: rgba(216, 161, 93, 0.38);
+  --accent-text: #16110d;
+
+  --buy: #b8cf6c;
+  --sell: #d96c5b;
+  --warn: #efbb62;
+
+  --buy-soft: rgba(184, 207, 108, 0.18);
+  --sell-soft: rgba(217, 108, 91, 0.18);
+  --warn-soft: rgba(239, 187, 98, 0.2);
+
+  --chart-line: #d8a15d;
+  --chart-area: rgba(216, 161, 93, 0.1);
+
+  --tooltip-bg: rgba(26, 22, 18, 0.95);
+
+  --header-glass: rgba(26, 22, 18, 0.6);
+  --header-border: rgba(255, 255, 255, 0.08);
 }
