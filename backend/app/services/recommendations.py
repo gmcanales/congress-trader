@@ -66,15 +66,16 @@ PROFILE_RUN_FILTERS: dict[str, dict] = {
     },
     # v2.5 — operationalizes the Bayesian finding on `is_spouse_owned`
     # (run #60: P(β > 0) = 0.89, mean +1.11% after controlling for
-    # leadership, sector, trifecta, party, in_majority). Backed by
-    # owner-cut rules backtests #55 (SPY) and #56 (RSP).
+    # leadership, sector, trifecta, party, in_majority). Backed by a
+    # mirror+beta-stop run on owner=spouse_or_joint with the same
+    # test_end as the other profiles' backing runs (so the comparison
+    # chart's NAV curves end on the same date).
     "spouse_favored": {
         "leadership_only": False,
         "owner_filter": "spouse_or_joint",
         "exit_policies": (
             "mirror_sell_with_beta_trailing_stop",
             "mirror_sell_with_trailing_stop",
-            "fixed_horizon",  # #55/#56 are fixed_horizon — accept as fallback
         ),
     },
 }

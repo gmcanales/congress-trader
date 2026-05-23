@@ -718,7 +718,7 @@ profile to `services/recommendations.py`:
 | conservative | all | mirror_sell_with_beta_trailing_stop | run #14-ish lineage |
 | moderate | leadership | mirror_sell_with_beta_trailing_stop | run #11 lineage |
 | aggressive | leadership | mirror_sell | run #11 lineage |
-| **spouse_favored** | **owner ∈ (SP, JT)** | **mirror_sell_with_beta_trailing_stop** | **run #55 / #56** |
+| **spouse_favored** | **owner ∈ (SP, JT)** | **mirror_sell_with_beta_trailing_stop** | **run #62** (mirror+beta-stop, RSP, test→2026-04-30 to match the other profiles' window) |
 
 The recommendation engine itself remains stateless and rules-based; the
 Bayesian model informs the *universe definition* (which population
@@ -802,6 +802,7 @@ database). Tool `train_test_analysis` unless noted.
 | #58 | 2026-05-23 | filing_date | RSP | no | [63] | [1] | owner=self, RSP |
 | #59 | 2026-05-23 | filing_date | — | — | — | — | `bayesian_hierarchical` first fit (R̂=1.02; superseded) |
 | #60 | 2026-05-23 | filing_date | — | — | — | — | **`bayesian_hierarchical` with `is_spouse_owned`** (canonical v2.5) |
+| #62 | 2026-05-23 | filing_date | RSP | no | [63] | [1] | **`spouse_favored` backing run** (owner=spouse_or_joint, mirror+beta-stop, test→2026-04-30); OOS excess +27.17% — same sequencing caveat as §5.4 |
 
 ---
 
