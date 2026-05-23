@@ -12,3 +12,12 @@ CREATE INDEX IF NOT EXISTS ix_members_bioguide_id ON members(bioguide_id);
 -- are declared on the SQLAlchemy models and created via Base.metadata.create_all
 -- at backend startup. No ALTER statements are needed here unless we later add
 -- columns to those tables on existing deployments.
+
+-- Generic key/value store for small UI/app settings (e.g. active landing
+-- splash image). Keep this tiny — anything substantial should get its own
+-- table.
+CREATE TABLE IF NOT EXISTS app_settings (
+    key        TEXT PRIMARY KEY,
+    value      JSONB NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT now()
+);

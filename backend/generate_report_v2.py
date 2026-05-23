@@ -44,6 +44,7 @@ from pathlib import Path
 
 from app.database import SessionLocal
 from app.models import AnalysisRun, Dataset
+from app.services import plotly_theme
 
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-2.27.0.min.js"
@@ -96,11 +97,13 @@ def _nav_figure(runs: list[dict]) -> dict:
     runs are visible in the table.
     """
     traces = []
+    # Each exit policy gets a distinct hue from the Goosebase colorway so
+    # the legend reads naturally next to the report's prose.
     palette = {
-        "fixed_horizon":                          "#94a3b8",
-        "mirror_sell":                            "#0ea5e9",
-        "mirror_sell_with_trailing_stop":         "#ef4444",
-        "mirror_sell_with_beta_trailing_stop":    "#10b981",
+        "fixed_horizon":                          plotly_theme.TEXT_MUTED,
+        "mirror_sell":                            plotly_theme.ACCENT,
+        "mirror_sell_with_trailing_stop":         plotly_theme.SELL,
+        "mirror_sell_with_beta_trailing_stop":    plotly_theme.BUY,
     }
     bench_drawn = False
     for r in runs:
@@ -130,20 +133,20 @@ def _nav_figure(runs: list[dict]) -> dict:
                 "x": [d["date"] for d in nav],
                 "y": [d["benchmark"] for d in nav],
                 "name": "SPY (benchmark)",
-                "line": {"color": "#1f2937", "width": 2, "dash": "dash"},
+                "line": {"color": plotly_theme.BENCHMARK_PRIMARY, "width": 2, "dash": "dash"},
             })
             bench_drawn = True
 
     return {
         "data": traces,
-        "layout": {
+        "layout": plotly_theme.apply_theme({
             "title": "OOS strategy NAV — every exit policy × universe (SPY-benchmark runs)",
             "xaxis": {"title": "date"},
             "yaxis": {"title": "NAV (start = 1.00)", "tickformat": ".2f"},
             "hovermode": "x unified",
             "legend": {"orientation": "h", "y": -0.20},
             "margin": {"l": 60, "r": 30, "t": 60, "b": 130},
-        }
+        }),
     }
 
 
@@ -266,34 +269,7 @@ means we don't claim alpha beyond what the regressors above support.
 
 # ── HTML emission ──────────────────────────────────────────────────────────
 
-CSS = """
-* { box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-       max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; color: #1d1d1f; line-height: 1.6; }
-header { border-bottom: 2px solid #e5e5e7; padding-bottom: 1rem; margin-bottom: 2rem; }
-header h1 { margin: 0 0 0.25rem; font-size: 1.8rem; }
-header .meta { color: #6e6e73; font-size: 0.9rem; }
-h2 { margin-top: 2.4rem; padding-top: 0.8rem; border-top: 1px solid #e5e5e7; font-size: 1.35rem; }
-h3 { margin-top: 1.4rem; font-size: 1.05rem; }
-.callout { background: #f7f7fb; border-left: 4px solid #1f77b4; padding: 0.8rem 1rem;
-           border-radius: 4px; margin: 1rem 0; }
-.callout.warn { border-left-color: #d97706; background: #fffbeb; }
-.callout.crit { border-left-color: #b91c1c; background: #fef2f2; }
-.callout.good { border-left-color: #047857; background: #ecfdf5; }
-table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.92rem; }
-th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid #e5e5e7; }
-th { background: #f7f7fb; font-weight: 600; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.pos { color: #047857; }
-.neg { color: #b91c1c; }
-code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f3f3f7;
-            padding: 1px 4px; border-radius: 3px; font-size: 0.88em; }
-.chart { margin: 1rem 0 1.5rem; }
-ul.tight li, ol.tight li { margin: 0.2rem 0; }
-.kvtable td.key { font-weight: 500; color: #3c3c43; width: 30%; }
-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e5e7;
-         color: #6e6e73; font-size: 0.85rem; }
-"""
+CSS = plotly_theme.REPORT_CSS
 
 
 def build_html(runs: list[dict]) -> str:
@@ -314,6 +290,7 @@ def build_html(runs: list[dict]) -> str:
     return f"""<!DOCTYPE html>
 <html lang='en'><head><meta charset='utf-8'>
 <title>Congress Trader — Strategy Framework Report</title>
+{plotly_theme.FONT_LINK}
 <style>{CSS}</style>
 <script src='{PLOTLY_CDN}'></script>
 </head><body>

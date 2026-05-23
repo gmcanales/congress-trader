@@ -33,6 +33,7 @@ from sqlalchemy import and_
 
 from app.database import SessionLocal
 from app.models import AnalysisRun, Dataset, Transaction
+from app.services import plotly_theme
 
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-2.27.0.min.js"
@@ -130,8 +131,9 @@ def _nav_figure(runs: list[dict]) -> dict:
     calendar so the freeze stretches and benchmark differentials are visible
     side-by-side."""
     traces = []
-    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
-    bench_colors = {"SPY": "#7f7f7f", "RSP": "#444444"}
+    palette = plotly_theme.COLORWAY
+    bench_colors = {"SPY": plotly_theme.BENCHMARK_PRIMARY,
+                    "RSP": plotly_theme.BENCHMARK_SECONDARY}
     benchmarks_drawn: set[str] = set()
     for i, r in enumerate(runs):
         oos = r["full_results"].get("out_of_sample_test") or {}
@@ -156,19 +158,19 @@ def _nav_figure(runs: list[dict]) -> dict:
                 "x": [p["date"] for p in nav],
                 "y": [p["benchmark"] for p in nav],
                 "name": f"{bench} (benchmark)",
-                "line": {"color": bench_colors.get(bench, "#aaaaaa"),
+                "line": {"color": bench_colors.get(bench, plotly_theme.TEXT_MUTED),
                          "width": 2, "dash": "dot"},
             })
             benchmarks_drawn.add(bench)
 
-    layout = {
+    layout = plotly_theme.apply_theme({
         "title": "Out-of-sample NAV — strategy variants vs benchmarks",
         "xaxis": {"title": "date"},
         "yaxis": {"title": "NAV (start = 1.00)", "tickformat": ".2f"},
         "hovermode": "x unified",
         "legend": {"orientation": "h", "y": -0.22},
         "margin": {"l": 60, "r": 30, "t": 60, "b": 120},
-    }
+    })
     return {"data": traces, "layout": layout}
 
 
@@ -178,50 +180,24 @@ def _survival_figure(survival: list[dict], min_members: int, cluster_days: int) 
     kept = [s["kept"] for s in survival]
     traces = [
         {"type": "bar", "name": "Raw purchases", "x": months, "y": raw,
-         "marker": {"color": "#c6dbef"}},
+         "marker": {"color": plotly_theme.TEXT_FAINT}},
         {"type": "bar", "name": f"Survived filter (min_members={min_members}, {cluster_days}d)",
-         "x": months, "y": kept, "marker": {"color": "#1f77b4"}},
+         "x": months, "y": kept, "marker": {"color": plotly_theme.ACCENT}},
     ]
-    layout = {
+    layout = plotly_theme.apply_theme({
         "title": "Why the NAV freezes: conviction filter survival per month",
         "barmode": "group",
         "xaxis": {"title": "month (transaction_date)"},
         "yaxis": {"title": "events"},
         "legend": {"orientation": "h", "y": -0.25},
         "margin": {"l": 60, "r": 30, "t": 60, "b": 90},
-    }
+    })
     return {"data": traces, "layout": layout}
 
 
 # ── HTML emission ───────────────────────────────────────────────────────────
 
-CSS = """
-* { box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-       max-width: 1080px; margin: 2rem auto; padding: 0 1.5rem; color: #1d1d1f; line-height: 1.6; }
-header { border-bottom: 2px solid #e5e5e7; padding-bottom: 1rem; margin-bottom: 2rem; }
-header h1 { margin: 0 0 0.25rem; font-size: 1.8rem; }
-header .meta { color: #6e6e73; font-size: 0.9rem; }
-h2 { margin-top: 2.4rem; padding-top: 0.8rem; border-top: 1px solid #e5e5e7; font-size: 1.35rem; }
-h3 { margin-top: 1.4rem; font-size: 1.05rem; }
-.callout { background: #f7f7fb; border-left: 4px solid #1f77b4; padding: 0.8rem 1rem;
-           border-radius: 4px; margin: 1rem 0; }
-.callout.warn { border-left-color: #d97706; background: #fffbeb; }
-.callout.crit { border-left-color: #b91c1c; background: #fef2f2; }
-table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.92rem; }
-th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid #e5e5e7; }
-th { background: #f7f7fb; font-weight: 600; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.pos { color: #047857; }
-.neg { color: #b91c1c; }
-.kvtable td.key { font-weight: 500; color: #3c3c43; width: 30%; }
-code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f3f3f7;
-            padding: 1px 4px; border-radius: 3px; font-size: 0.88em; }
-.chart { margin: 1rem 0 1.5rem; }
-ul.tight li { margin: 0.2rem 0; }
-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e5e7;
-         color: #6e6e73; font-size: 0.85rem; }
-"""
+CSS = plotly_theme.REPORT_CSS
 
 
 def _fmt_pct(x: float | None, plus: bool = True) -> str:
@@ -589,6 +565,7 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Congress Trader — v1 Backtest Review</title>
+{plotly_theme.FONT_LINK}
 <style>{CSS}</style>
 <script src="{PLOTLY_CDN}"></script>
 </head><body>

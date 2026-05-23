@@ -1,28 +1,12 @@
 /* ── Reset & base ── */
+/* Design tokens live in tokens.css. This file consumes --bg, --text, etc. */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg:        #0d1117;
-  --surface:   #161b22;
-  --surface2:  #1f2937;
-  --border:    #30363d;
-  --text:      #e6edf3;
-  --text-muted:#8b949e;
-  --accent:    #58a6ff;
-  --buy:       #3fb950;
-  --sell:      #f85149;
-  --chart-line:#58a6ff;
-  --chart-area:rgba(88,166,255,0.08);
-  --tooltip-bg:rgba(13,17,23,0.95);
-  --radius:    6px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-}
 
 html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font);
+  font-family: var(--font-body);
   font-size: 14px;
   overflow: hidden;
 }
@@ -38,7 +22,46 @@ html, body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.app-header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+.app-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-header h1 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+.goosebase-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.1px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  transition: color .15s, background .15s;
+}
+.goosebase-link:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.goosebase-link .brand-mark {
+  color: var(--accent);
+  font-size: 15px;
+  text-shadow: 0 0 10px var(--accent-glow);
+}
+.header-sep {
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+}
 .subtitle { color: var(--text-muted); font-size: 12px; margin-left: 10px; }
 
 /* ── Admin panel ── */
@@ -174,16 +197,23 @@ input:focus { border-color: var(--accent); }
 /* ── Buttons ── */
 .btn-primary {
   background: var(--accent);
-  color: #0d1117;
-  border: none;
+  color: var(--accent-text);
+  border: 1px solid transparent;
   border-radius: var(--radius);
   padding: 7px 14px;
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.1px;
   cursor: pointer;
-  transition: opacity .15s;
+  transition: background .15s, box-shadow .2s, transform .1s;
+  box-shadow: 0 0 0 0 var(--accent-glow);
 }
-.btn-primary:hover { opacity: .85; }
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 18px -4px var(--accent-glow);
+}
+.btn-primary:active { transform: translateY(1px); }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
 .btn-full { width: 100%; padding: 9px; }
 
@@ -428,14 +458,14 @@ input:focus { border-color: var(--accent); }
   vertical-align: middle;
 }
 .conf-high   { background: var(--buy); }
-.conf-medium { background: #d6a936; }
+.conf-medium { background: var(--warn); }
 .conf-low    { background: var(--sell); }
 .conf-text-high   { color: var(--buy); }
-.conf-text-medium { color: #d6a936; }
+.conf-text-medium { color: var(--warn); }
 .conf-text-low    { color: var(--sell); }
 
 /* low-confidence chart markers get a dashed outline */
-.marker.conf-low-marker { stroke: #d6a936; stroke-width: 1.2px; stroke-dasharray: 2,1.5; }
+.marker.conf-low-marker { stroke: var(--warn); stroke-width: 1.2px; stroke-dasharray: 2,1.5; }
 
 /* ── View nav ── */
 .view-nav {
@@ -450,10 +480,22 @@ input:focus { border-color: var(--accent); }
   color: var(--text-muted);
   border: none;
   padding: 6px 14px;
+  font-family: var(--font-display);
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
   cursor: pointer;
+  transition: color .15s, background .15s;
 }
-.nav-btn.active { background: var(--accent); color: #fff; }
+.nav-btn:hover:not(.active) {
+  color: var(--text);
+  background: var(--surface2);
+}
+.nav-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 16px -4px var(--accent-glow);
+}
 
 /* ── Analysis view ── */
 .analysis-view {
@@ -544,9 +586,9 @@ input:focus { border-color: var(--accent); }
 .badge {
   font-size: 10px; padding: 1px 6px; border-radius: 3px; text-transform: uppercase;
 }
-.badge-running { background: #d6a936; color: #000; }
-.badge-done { background: var(--buy); color: #000; }
-.badge-error { background: var(--sell); color: #fff; }
+.badge-running { background: var(--warn);  color: var(--accent-text); }
+.badge-done    { background: var(--buy);   color: var(--accent-text); }
+.badge-error   { background: var(--sell);  color: var(--accent-text); }
 
 .oos-summary {
   margin-top: 8px;
@@ -650,9 +692,9 @@ input:focus { border-color: var(--accent); }
   border-radius: 3px;
   font-variant-numeric: tabular-nums;
 }
-.cache-tag.cache-hit   { background: rgba(63,185,80,0.18); color: var(--buy); }
-.cache-tag.cache-stale { background: rgba(214,169,54,0.18); color: #d6a936; }
-.cache-tag.cache-live  { background: rgba(88,166,255,0.18); color: var(--accent); }
+.cache-tag.cache-hit   { background: var(--buy-soft); color: var(--buy); }
+.cache-tag.cache-stale { background: var(--warn-soft); color: var(--warn); }
+.cache-tag.cache-live  { background: var(--accent-soft); color: var(--accent); }
 
 /* ── Strategy comparison chart ── */
 .strat-controls {
@@ -768,9 +810,9 @@ input:focus { border-color: var(--accent); }
   font-weight: 600;
   margin-right: 3px;
 }
-.pill-close { background: rgba(248,81,73,0.18); color: var(--sell); }
-.pill-hold  { background: rgba(88,166,255,0.18); color: var(--accent); }
-.pill-buy   { background: rgba(63,185,80,0.18); color: var(--buy); }
+.pill-close { background: var(--sell-soft);   color: var(--sell); }
+.pill-hold  { background: var(--accent-soft); color: var(--accent); }
+.pill-buy   { background: var(--buy-soft);    color: var(--buy); }
 .pill-none  { color: var(--text-muted); font-size: 11px; }
 
 /* CSV upload sub-controls in the portfolio form */

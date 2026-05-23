@@ -1,0 +1,173 @@
+/*
+ * Goosebase design tokens.
+ *
+ * Default palette = warmMarsh (defined on :root). Other palettes apply when
+ * <html data-palette="X"> is set; the palette-loader script picks the active
+ * palette from /api/landing/palette and writes that attribute very early so
+ * the first paint already uses the right colors.
+ */
+
+:root {
+  /* — Surfaces — */
+  --bg:        #0f0d0a;
+  --surface:   #18130d;
+  --surface2:  #221a12;
+  --border:    #2e251a;
+  --border-strong: #3d3122;
+
+  /* — Text — */
+  --text:       #ede4d3;
+  --text-muted: #8a7d68;
+  --text-faint: #5a4f3e;
+  /* Hero text always sits on top of the painting, so it needs to stay
+   * legible regardless of the palette. Light palettes override this. */
+  --hero-text:  var(--text);
+
+  /* — Brand / accent — */
+  --accent:        #5fb4a8;
+  --accent-hover:  #7ed1c5;
+  --accent-soft:   rgba(95,180,168,0.14);
+  --accent-glow:   rgba(95,180,168,0.35);
+  --accent-text:   #0b0907;
+
+  /* — Semantic — */
+  --buy:  #6fbf72;
+  --sell: #e87060;
+  --warn: #d6a936;
+  --buy-soft:  rgba(111,191,114,0.18);
+  --sell-soft: rgba(232,112,96,0.18);
+  --warn-soft: rgba(214,169,54,0.18);
+
+  /* — Charts — */
+  --chart-line: #5fb4a8;
+  --chart-area: rgba(95,180,168,0.10);
+  --tooltip-bg: rgba(15,13,10,0.95);
+
+  /* — Composition — */
+  --header-glass: rgba(15,13,10,0.55);
+  --header-border: rgba(255,255,255,0.06);
+
+  /* — Shape — */
+  --radius:    6px;
+  --radius-lg: 12px;
+
+  /* — Type — */
+  --font-display: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body:    'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+}
+
+/* — Cleanmeter: vivid cyan on near-black, gaming/tech ─────────────── */
+:root[data-palette="cleanmeter"] {
+  --bg:        #07090e;
+  --surface:   #0e131c;
+  --surface2:  #161e2b;
+  --border:    #1f2a3c;
+  --border-strong: #2d3a52;
+  --text:       #e6edf7;
+  --text-muted: #758197;
+  --text-faint: #4a5468;
+  --accent:        #00e5c8;
+  --accent-hover:  #4ff5dc;
+  --accent-soft:   rgba(0,229,200,0.12);
+  --accent-glow:   rgba(0,229,200,0.55);
+  --accent-text:   #07090e;
+  --buy:  #2bd07c;
+  --sell: #ff4d6e;
+  --warn: #ffbb33;
+  --buy-soft:  rgba(43,208,124,0.18);
+  --sell-soft: rgba(255,77,110,0.18);
+  --warn-soft: rgba(255,187,51,0.18);
+  --chart-line: #00e5c8;
+  --chart-area: rgba(0,229,200,0.12);
+  --tooltip-bg: rgba(7,9,14,0.95);
+  --header-glass: rgba(7,9,14,0.65);
+  --header-border: rgba(255,255,255,0.07);
+}
+
+/* — Frankli: warm cream + coral, light theme inspired by getfrankli ─ */
+:root[data-palette="frankli"] {
+  --bg:        #fdf6ec;
+  --surface:   #ffffff;
+  --surface2:  #f5ecdb;
+  --border:    #e6dac3;
+  --border-strong: #ccb893;
+  --text:       #1a1f2e;
+  --text-muted: #5d6373;
+  --text-faint: #99a0b0;
+  /* Painting is dark/atmospheric — keep hero text near-white even though
+   * the rest of this palette is light. */
+  --hero-text:  #fdf6ec;
+  --accent:        #f56c3a;
+  --accent-hover:  #ff8456;
+  --accent-soft:   rgba(245,108,58,0.12);
+  --accent-glow:   rgba(245,108,58,0.32);
+  --accent-text:   #ffffff;
+  --buy:  #2f9e44;
+  --sell: #d63b3b;
+  --warn: #d68a1f;
+  --buy-soft:  rgba(47,158,68,0.14);
+  --sell-soft: rgba(214,59,59,0.14);
+  --warn-soft: rgba(214,138,31,0.16);
+  --chart-line: #f56c3a;
+  --chart-area: rgba(245,108,58,0.10);
+  --tooltip-bg: rgba(26,31,46,0.95);
+  --header-glass: rgba(253,246,236,0.72);
+  --header-border: rgba(26,31,46,0.08);
+}
+
+/* — Night Sky: cool dark + GitHub-blue accent ──────────────────────── */
+:root[data-palette="nightSky"] {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #1f2937;
+  --border:    #30363d;
+  --border-strong: #444c56;
+  --text:       #e6edf3;
+  --text-muted: #8b949e;
+  --text-faint: #586069;
+  --accent:        #58a6ff;
+  --accent-hover:  #79b8ff;
+  --accent-soft:   rgba(88,166,255,0.12);
+  --accent-glow:   rgba(88,166,255,0.4);
+  --accent-text:   #0d1117;
+  --buy:  #3fb950;
+  --sell: #f85149;
+  --warn: #d29922;
+  --buy-soft:  rgba(63,185,80,0.18);
+  --sell-soft: rgba(248,81,73,0.18);
+  --warn-soft: rgba(210,153,34,0.18);
+  --chart-line: #58a6ff;
+  --chart-area: rgba(88,166,255,0.10);
+  --tooltip-bg: rgba(13,17,23,0.95);
+  --header-glass: rgba(13,17,23,0.6);
+  --header-border: rgba(255,255,255,0.06);
+}
+
+/* — Sunset: rich warm dark + coral ─────────────────────────────────── */
+:root[data-palette="sunset"] {
+  --bg:        #160a05;
+  --surface:   #211008;
+  --surface2:  #2e1810;
+  --border:    #3a2418;
+  --border-strong: #523222;
+  --text:       #fff2dd;
+  --text-muted: #b89878;
+  --text-faint: #7a6248;
+  --accent:        #ff7849;
+  --accent-hover:  #ff9166;
+  --accent-soft:   rgba(255,120,73,0.13);
+  --accent-glow:   rgba(255,120,73,0.45);
+  --accent-text:   #160a05;
+  --buy:  #d3b85c;
+  --sell: #e8553a;
+  --warn: #f4b042;
+  --buy-soft:  rgba(211,184,92,0.18);
+  --sell-soft: rgba(232,85,58,0.18);
+  --warn-soft: rgba(244,176,66,0.2);
+  --chart-line: #ff7849;
+  --chart-area: rgba(255,120,73,0.12);
+  --tooltip-bg: rgba(22,10,5,0.95);
+  --header-glass: rgba(22,10,5,0.6);
+  --header-border: rgba(255,255,255,0.08);
+}
