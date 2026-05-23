@@ -188,6 +188,15 @@
   async function onCsvSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!localStorage.getItem(DISCLOSURE_KEY)) {
+      showDisclosureModal(() => doUploadCsv(file));
+      portCsvFile.value = '';
+      return;
+    }
+    doUploadCsv(file);
+  }
+
+  async function doUploadCsv(file) {
     portCsvPick.disabled = true;
     setPortStatus(`Uploading ${file.name}…`);
     try {
