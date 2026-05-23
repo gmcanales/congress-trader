@@ -30,7 +30,10 @@ services:
       - ./docs:/docs:ro
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        GIT_HASH: ${GIT_HASH:-dev}
     restart: unless-stopped
     ports:
       - "80:80"

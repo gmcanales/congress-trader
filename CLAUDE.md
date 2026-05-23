@@ -17,9 +17,17 @@ backtesting whether following those trades has any edge.
 ## Running it
 
 ```
-docker compose up -d --build      # start everything
+./scripts/deploy.sh               # build with cache-busting hash + start everything
 docker compose logs -f backend    # watch backend
 ```
+
+`deploy.sh` injects the current git short-hash as `?v=<hash>` into all local
+JS/CSS asset URLs at image build time, so Cloudflare and browsers never serve
+stale files after a deploy. After running on the NUC, also purge the Cloudflare
+cache (dashboard → your domain → Caching → Purge Everything).
+
+Plain `docker compose up -d --build` still works but assets default to `?v=dev`
+(no cache busting).
 
 Open `http://localhost` — two views via the header toggle:
 - **Trades** — pick a Most-Traded ticker (or search one), see member buys/sells
