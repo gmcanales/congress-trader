@@ -86,6 +86,8 @@
 
   // ── Runs list ──────────────────────────────────────────────────────────────
   let runs = [];
+  const RUNS_PAGE_SIZE = 5;
+  let runsPage = 0;
 
   async function loadRuns() {
     try {
@@ -93,12 +95,25 @@
     } catch (e) {
       runs = [];
     }
+    // default to last page (most recent 5)
+    runsPage = Math.max(0, Math.ceil(runs.length / RUNS_PAGE_SIZE) - 1);
+    renderRunsPage();
+  }
+
+  function renderRunsPage() {
     const tb = document.getElementById('runs-tbody');
+    const pgEl = document.getElementById('runs-pagination');
+    const totalPages = Math.max(1, Math.ceil(runs.length / RUNS_PAGE_SIZE));
+
     if (!runs.length) {
       tb.innerHTML = '<tr><td colspan="9" class="empty">No analysis runs yet.</td></tr>';
+      if (pgEl) pgEl.innerHTML = '';
       return;
     }
-    tb.innerHTML = runs.map(r => {
+
+    const start = runsPage * RUNS_PAGE_SIZE;
+    const pageRuns = runs.slice(start, start + RUNS_PAGE_SIZE);
+    tb.innerHTML = pageRuns.map(r => {
       const s = r.scores || {};
       const sel = s.selected_params
         ? `${s.selected_params.horizon_days}d / ≥${s.selected_params.min_members}` : '—';
@@ -115,6 +130,15 @@
         <td>${statusBadge(r.status)}</td>
       </tr>`;
     }).join('');
+
+    if (pgEl) {
+      pgEl.innerHTML = `
+        <button id="runs-prev" ${runsPage === 0 ? 'disabled' : ''}>← Prev</button>
+        <span>Page ${runsPage + 1} of ${totalPages}</span>
+        <button id="runs-next" ${runsPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>`;
+      document.getElementById('runs-prev').addEventListener('click', () => { runsPage--; renderRunsPage(); });
+      document.getElementById('runs-next').addEventListener('click', () => { runsPage++; renderRunsPage(); });
+    }
   }
 
   document.getElementById('runs-tbody').addEventListener('click', e => {
@@ -259,20 +283,44 @@
     const data = curve.map(d => ({
       date: new Date(d.date), strategy: d.strategy, benchmark: d.benchmark,
     }));
-    const x = d3.scaleTime().domain(d3.extent(data, d => d.date)).range([m.l, W - m.r]);
+    const xOrig = d3.scaleTime().domain(d3.extent(data, d => d.date)).range([m.l, W - m.r]);
     const vals = data.flatMap(d => [d.strategy, d.benchmark]);
-    const y = d3.scaleLinear().domain([d3.min(vals), d3.max(vals)]).nice()
-      .range([H - m.b, m.t]);
+    const yOrig = d3.scaleLinear().domain([d3.min(vals), d3.max(vals)]).nice().range([H - m.b, m.t]);
+    let x = xOrig.copy(), y = yOrig.copy();
 
-    svg.append('g').attr('class', 'axis')
-      .attr('transform', `translate(0,${H - m.b})`)
-      .call(d3.axisBottom(x).ticks(6));
-    svg.append('g').attr('class', 'axis')
+    svg.append('defs').append('clipPath').attr('id', 'nav-clip')
+      .append('rect').attr('x', m.l).attr('y', m.t)
+      .attr('width', W - m.l - m.r).attr('height', H - m.t - m.b);
+
+    const xAxisG = svg.append('g').attr('class', 'axis')
+      .attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(6));
+    const yAxisG = svg.append('g').attr('class', 'axis')
       .attr('transform', `translate(${m.l},0)`)
       .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format('.2f')));
 
-    const mkLine = key => d3.line().x(d => x(d.date)).y(d => y(d[key]));
-    svg.append('path').datum(data).attr('class', 'nav-bench').attr('d', mkLine('benchmark'));
-    svg.append('path').datum(data).attr('class', 'nav-strat').attr('d', mkLine('strategy'));
+    const g = svg.append('g').attr('clip-path', 'url(#nav-clip)');
+    const benchPath = g.append('path').datum(data).attr('class', 'nav-bench');
+    const stratPath = g.append('path').datum(data).attr('class', 'nav-strat');
+
+    function redraw() {
+      const mkL = key => d3.line().x(d => x(d.date)).y(d => y(d[key]));
+      benchPath.attr('d', mkL('benchmark'));
+      stratPath.attr('d', mkL('strategy'));
+      xAxisG.call(d3.axisBottom(x).ticks(6));
+      yAxisG.call(d3.axisLeft(y).ticks(5).tickFormat(d3.format('.2f')));
+    }
+    redraw();
+
+    const zoom = d3.zoom().scaleExtent([0.5, 50])
+      .on('zoom', event => {
+        x = event.transform.rescaleX(xOrig);
+        y = event.transform.rescaleY(yOrig);
+        redraw();
+      });
+
+    svg.append('rect').attr('class', 'zoom-capture')
+      .attr('x', m.l).attr('y', m.t)
+      .attr('width', W - m.l - m.r).attr('height', H - m.t - m.b)
+      .attr('fill', 'transparent').call(zoom);
   }
 })();

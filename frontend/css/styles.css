@@ -975,3 +975,73 @@ input:focus { border-color: var(--accent); }
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ── Collapse toggle ── */
+.collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform .2s, color .15s;
+  flex-shrink: 0;
+}
+.collapse-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.collapse-btn.is-collapsed { transform: rotate(-90deg); }
+
+.collapsible-body.hidden { display: none !important; }
+
+/* ── Recs results header ── */
+.recs-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0;
+}
+.recs-results-header h3 { margin: 0; font-size: 14px; }
+
+/* ── Fix rec-col overflow (grid children need min-width:0) ── */
+.rec-col { min-width: 0; }
+.rec-table-scroll { overflow-x: auto; }
+
+/* ── Sidebar footer ── */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Chart zoom cursor ── */
+.zoom-capture { cursor: crosshair; }
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pagination button {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pagination button:disabled { opacity: .35; cursor: not-allowed; }
+.pagination button:not(:disabled):hover { border-color: var(--text-muted); }

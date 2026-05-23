@@ -22,6 +22,7 @@ class TradeChart {
     this._drawFocus();
     this._drawContext();
     this._setupBrush();
+    this._setupZoom();
   }
 
   clear() {
@@ -293,5 +294,33 @@ class TradeChart {
     this.yAxisG.call(d3.axisLeft(this.yFocus).ticks(6).tickFormat(d => `$${d3.format(',.0f')(d)}`));
     this._updateGrid();
     this._drawMarkers();
+  }
+
+  _setupZoom() {
+    const self = this;
+    const zoom = d3.zoom()
+      .filter(event => event.type === 'wheel')
+      .scaleExtent([1, 100])
+      .on('zoom', (event) => {
+        const newX = event.transform.rescaleX(self.xFull);
+        self.xFocus.domain(newX.domain());
+        const [nx0, nx1] = newX.domain();
+        const visible = self.prices.filter(d => d.date >= nx0 && d.date <= nx1);
+        if (visible.length > 1) {
+          self.yFocus.domain([
+            d3.min(visible, d => d.low) * 0.98,
+            d3.max(visible, d => d.high) * 1.02,
+          ]);
+        }
+        self._updateFocus();
+        self.brushG.call(self.brush.move, [self.xCtx(nx0), self.xCtx(nx1)]);
+      });
+
+    this.focus.append('rect')
+      .attr('class', 'zoom-capture')
+      .attr('width', this.W)
+      .attr('height', this.focusH)
+      .attr('fill', 'transparent')
+      .call(zoom);
   }
 }

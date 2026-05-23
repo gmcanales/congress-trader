@@ -59,6 +59,16 @@
     aggressive:   '#bc8cff', // purple
   };
 
+  // ── Collapse button universal handler ──────────────────────────────────────
+  document.addEventListener('click', function onCollapseClick(e) {
+    const btn = e.target.closest('.collapse-btn[data-target]');
+    if (!btn) return;
+    const target = document.getElementById(btn.dataset.target);
+    if (!target) return;
+    const nowHidden = target.classList.toggle('hidden');
+    btn.classList.toggle('is-collapsed', nowHidden);
+  });
+
   let initialized = false;
   let lastRecData = null;     // last /recommendations payload
   let lastHoldings = [];      // user holdings
@@ -312,6 +322,15 @@
       renderOpen(data.open, data.as_of);
       renderHold(data.holding);
       renderClose(data.close);
+      const wrap = document.getElementById('recs-results-wrap');
+      if (wrap) {
+        wrap.classList.remove('hidden');
+        // Expand on first load
+        const body = document.getElementById('recs-results-body');
+        const btn = wrap.querySelector('.collapse-btn');
+        if (body) body.classList.remove('hidden');
+        if (btn) btn.classList.remove('is-collapsed');
+      }
       setStatus(
         `Open ${data.summary.n_open_today} · Holding ${data.summary.n_holding} · Close ${data.summary.n_close_today}`,
         'ok',
@@ -420,7 +439,8 @@
 
     // Unified date domain (intersection isn't right; use union)
     const allDates = profiles.flatMap(p => p.dates.map(d => new Date(d)));
-    const xExtent = d3.extent(allDates);
+    const xExtentRaw = d3.extent(allDates);
+    const xExtent = data._zoomDomain || xExtentRaw;
     const x = d3.scaleTime().domain(xExtent).range([m.l, W - m.r]);
 
     // y: include strategy, benchmark, band extremes — and the user portfolio NAV
@@ -564,6 +584,28 @@
       tip.style.left = leftSide ? '' : `${xPx + 10}px`;
       tip.style.right = leftSide ? `${rect.width - xPx + 10}px` : '';
       tip.style.top = '8px';
+    });
+
+    // Wheel zoom — rescale x domain around pointer and redraw
+    svg.on('wheel.zoom', event => {
+      event.preventDefault();
+      if (!lastStratData) return;
+      const [mx] = d3.pointer(event, stratChartEl);
+      const curDomain = x.domain();
+      const center = x.invert(mx);
+      const factor = event.deltaY > 0 ? 1.25 : 0.8;
+      const newD0 = new Date(+center - (+center - +curDomain[0]) * factor);
+      const newD1 = new Date(+center + (+curDomain[1] - +center) * factor);
+      lastStratData._zoomDomain = [newD0, newD1];
+      drawStrategyChart(lastStratData);
+    });
+
+    // Double-click to reset zoom
+    svg.on('dblclick.zoom', () => {
+      if (lastStratData) {
+        delete lastStratData._zoomDomain;
+        drawStrategyChart(lastStratData);
+      }
     });
   }
 

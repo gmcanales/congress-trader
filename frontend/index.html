@@ -47,7 +47,6 @@
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
       </button>
-      <button id="admin-toggle" class="btn-ghost">Admin</button>
     </div>
   </header>
 
@@ -129,6 +128,10 @@
           <span id="stat-confidence" class="stat-value"></span>
         </div>
       </section>
+
+      <div class="sidebar-footer">
+        <button id="admin-toggle" class="btn-ghost btn-full">⚙ Admin</button>
+      </div>
     </aside>
 
     <main class="main-content">
@@ -233,6 +236,7 @@
             <tbody id="runs-tbody"></tbody>
           </table>
         </div>
+        <div id="runs-pagination" class="pagination"></div>
       </div>
 
       <div id="run-detail" class="panel hidden">
@@ -349,88 +353,101 @@
       <div class="panel">
         <div class="panel-head">
           <h3>Strategy Config</h3>
-          <div class="cache-controls">
-            <span id="rec-cache-tag" class="cache-tag"></span>
-            <button id="rec-refresh-cache" class="btn-ghost"
-              title="Recompute all profiles' snapshots now (runs in background)">Refresh cache</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="cache-controls">
+              <span id="rec-cache-tag" class="cache-tag"></span>
+              <button id="rec-refresh-cache" class="btn-ghost"
+                title="Recompute all profiles' snapshots now (runs in background)">Refresh cache</button>
+            </div>
+            <button class="collapse-btn is-collapsed" data-target="strategy-config-body" title="Toggle config">▾</button>
           </div>
         </div>
-        <div id="rec-config" class="rec-config-box">No recommendations yet — pick a risk profile and click Get
-          Recommendations.</div>
+        <div id="strategy-config-body" class="collapsible-body hidden">
+          <div id="rec-config" class="rec-config-box">No recommendations yet — pick a risk profile and click Get
+            Recommendations.</div>
+        </div>
       </div>
 
-      <div class="rec-three-col">
-        <div class="panel rec-col">
-          <div class="panel-head">
-            <h3>Open Today <span id="rec-open-count" class="tx-count"></span></h3>
-          </div>
-          <p class="rec-help">New entries: the strategy would open these positions because the buy filed today (or
-            within the new-window).</p>
-          <div class="rec-table-scroll">
-            <table class="rec-table">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Member</th>
-                  <th>Party</th>
-                  <th>Filing date</th>
-                  <th>Days ago</th>
-                  <th>Entry $</th>
-                  <th>Current $</th>
-                  <th>Return</th>
-                  <th>β</th>
-                  <th>Eff. stop %</th>
-                </tr>
-              </thead>
-              <tbody id="rec-open-tbody"></tbody>
-            </table>
-          </div>
+      <div id="recs-results-wrap" class="hidden">
+        <div class="recs-results-header">
+          <h3>Today's Recommendations</h3>
+          <button class="collapse-btn" data-target="recs-results-body" title="Toggle results">▾</button>
         </div>
+        <div id="recs-results-body" class="collapsible-body">
+          <div class="rec-three-col">
+            <div class="panel rec-col">
+              <div class="panel-head">
+                <h3>Open Today <span id="rec-open-count" class="tx-count"></span></h3>
+              </div>
+              <p class="rec-help">New entries: the strategy would open these positions because the buy filed today (or
+                within the new-window).</p>
+              <div class="rec-table-scroll">
+                <table class="rec-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Member</th>
+                      <th>Party</th>
+                      <th>Filing date</th>
+                      <th>Days ago</th>
+                      <th>Entry $</th>
+                      <th>Current $</th>
+                      <th>Return</th>
+                      <th>β</th>
+                      <th>Eff. stop %</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rec-open-tbody"></tbody>
+                </table>
+              </div>
+            </div>
 
-        <div class="panel rec-col">
-          <div class="panel-head">
-            <h3>Currently Holding <span id="rec-hold-count" class="tx-count"></span></h3>
-          </div>
-          <p class="rec-help">Positions already in the portfolio that haven't hit any exit condition.</p>
-          <div class="rec-table-scroll">
-            <table class="rec-table">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Member</th>
-                  <th>Entry</th>
-                  <th>Days held</th>
-                  <th>Return</th>
-                  <th>DD from peak</th>
-                  <th>Eff. stop %</th>
-                </tr>
-              </thead>
-              <tbody id="rec-hold-tbody"></tbody>
-            </table>
-          </div>
-        </div>
+            <div class="panel rec-col">
+              <div class="panel-head">
+                <h3>Currently Holding <span id="rec-hold-count" class="tx-count"></span></h3>
+              </div>
+              <p class="rec-help">Positions already in the portfolio that haven't hit any exit condition.</p>
+              <div class="rec-table-scroll">
+                <table class="rec-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Member</th>
+                      <th>Entry</th>
+                      <th>Days held</th>
+                      <th>Return</th>
+                      <th>DD from peak</th>
+                      <th>Eff. stop %</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rec-hold-tbody"></tbody>
+                </table>
+              </div>
+            </div>
 
-        <div class="panel rec-col">
-          <div class="panel-head">
-            <h3>Close Today <span id="rec-close-count" class="tx-count"></span></h3>
-          </div>
-          <p class="rec-help">Exit signal fires on the as-of date: mirror sale, trailing-stop hit, or time-stop
-            fallback.</p>
-          <div class="rec-table-scroll">
-            <table class="rec-table">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Member</th>
-                  <th>Exit reason</th>
-                  <th>Entry</th>
-                  <th>Exit $</th>
-                  <th>Realized</th>
-                  <th>Days held</th>
-                </tr>
-              </thead>
-              <tbody id="rec-close-tbody"></tbody>
-            </table>
+            <div class="panel rec-col">
+              <div class="panel-head">
+                <h3>Close Today <span id="rec-close-count" class="tx-count"></span></h3>
+              </div>
+              <p class="rec-help">Exit signal fires on the as-of date: mirror sale, trailing-stop hit, or time-stop
+                fallback.</p>
+              <div class="rec-table-scroll">
+                <table class="rec-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Member</th>
+                      <th>Exit reason</th>
+                      <th>Entry</th>
+                      <th>Exit $</th>
+                      <th>Realized</th>
+                      <th>Days held</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rec-close-tbody"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       </div>
