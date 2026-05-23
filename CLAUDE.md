@@ -35,7 +35,7 @@ The app is reachable at **https://goosebase.org**, gated by Cloudflare Access
 (one-time-PIN by email to an explicit allowlist). Domain registered via
 Cloudflare Registrar.
 
-Transport: `cloudflared` runs as a Windows service on the dev box (this host),
+Transport: `cloudflared` runs as a **systemd service on the NUC** (primary),
 holds a connector token registered to a named tunnel, and its single Public
 Hostname rule maps `goosebase.org` → `http://localhost:80` (nginx). TLS is
 terminated at Cloudflare's edge — the connector → origin hop is plain HTTP,
@@ -54,25 +54,38 @@ try `https://goosebase.org/cdn-cgi/trace` as a CF-only liveness check.
 
 The NUC database (`db.internal.example:5432`) remains LAN-only.
 
-### Planned NUC migration
+### NUC deployment (live as of 2026-05-23)
 
-Backend + frontend + cloudflared will move from the dev box to the NUC so
-the dev box can shut down nightly. Bayesian fitting stays on the dev box
-(too RAM-hungry for the NUC, and admin-only anyway). Backtests ride along
-with the backend and run ~15–30% slower on the NUC's i5-1240P; the
+Backend, frontend, and cloudflared now run on the NUC. The dev box can
+sleep nightly. Bayesian fitting stays on the dev box (too RAM-hungry for
+the NUC). Backtests run ~15–30% slower on the NUC's i5-1240P; the
 loopback DB connection partially offsets the CPU drop.
 
-NUC budget after prep (2026-05-22):
-**3.6 GB RAM total / ~2.6 GB available, 2 GB swap, i5-1240P (12C/16T),
-NVMe SSD.** Headroom achieved by disabling the `nodm` graphical session
-(~600 MB), disabling `nordvpnd` + tearing down its WireGuard interface
-(~100 MB + restored direct LAN routing), and adding a 2 GB swapfile with
-`vm.swappiness=10`. RAM upgrade is shelved — DDR4-3200 2×8 GB currently
-~$205, not worth it for marginal headroom.
+NUC spec: **3.6 GB RAM / ~2.6 GB available, 2 GB swap, i5-1240P (12C/16T),
+NVMe SSD.** Headroom from: disabling `nodm` (~600 MB), disabling `nordvpnd`
+(~100 MB), adding 2 GB swapfile with `vm.swappiness=10`.
 
-Full sequencing, rollback strategy, and architectural choices (host
-networking, dual cloudflared connectors, etc.) live in
-[decision_log.md §7](docs/decision_log.md).
+Architecture and full migration history in [decision_log.md §7](docs/decision_log.md).
+
+### Dev override (switching traffic to the dev box)
+
+`scripts/dev-on.ps1` and `scripts/dev-off.ps1` (run from the dev box)
+swap the active cloudflared connector so the dev box serves traffic while
+you work, then hand back to the NUC when done:
+
+```powershell
+# Take over from NUC
+.\scripts\dev-on.ps1
+
+# Hand back to NUC
+.\scripts\dev-off.ps1
+```
+
+**One-time SSH setup** (dev box → NUC) required before first use:
+```powershell
+ssh-keygen -t ed25519   # if no key exists
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh root@db.internal.example "cat >> ~/.ssh/authorized_keys"
+```
 
 ## Data pipeline
 
@@ -207,9 +220,9 @@ docker-compose.yml  .env
   (deferred).
 - App is publicly reachable at https://goosebase.org via Cloudflare Tunnel
   + Access (email-OTP allowlist). See "Public deployment" above.
-- NUC prepped for app migration (display manager + NordVPN disabled, 2 GB
-  swap, ~2.6 GB available). Migration plan in decision_log §7; execution
-  pending.
+- **NUC migration complete (2026-05-23).** Backend + frontend + cloudflared
+  running on NUC. Dev box can sleep nightly. Dev override via
+  `scripts/dev-on.ps1` / `scripts/dev-off.ps1`.
 
 ### Project history
 

@@ -1,0 +1,11 @@
+# NUC overlay: skip host port mapping for backend (port 8000 occupied by media-center),
+# let backend reach native Postgres via host-gateway, frontend reaches backend by service name.
+# Start with: docker compose -f docker-compose.yml -f docker-compose.nuc.yml up -d --build backend frontend
+services:
+  backend:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATABASE_URL: postgresql://trading_user:REDACTED@host.docker.internal:5432/trading_db
+      REPORTS_DIR: /reports
+      DOCS_DIR: /docs

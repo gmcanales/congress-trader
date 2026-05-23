@@ -730,17 +730,17 @@ it for the marginal headroom. Revisit if RAM prices come down or if the
 app evolves to need substantially more memory than the current backend
 profile.
 
-**Migration plan (zero-downtime via dual cloudflared connectors):**
+**Migration plan (zero-downtime via dual cloudflared connectors) — completed 2026-05-23:**
 
-| # | Step | Rollback |
+| # | Step | Status |
 |---|---|---|
-| 1 | Install Docker + compose plugin on NUC; clone repo; write `.env` with NUC-local `DATABASE_URL` | n/a (prep only) |
-| 2 | Edit `pg_hba.conf` to allow Docker bridge / loopback; reload Postgres | revert hba, reload |
-| 3 | `docker compose up -d --build` on NUC, *omitting* the `db` service (port conflict with native Postgres) | `docker compose down` on NUC |
-| 4 | Install cloudflared on NUC with a **second connector token** bound to the same tunnel | stop NUC cloudflared service |
-| 5 | Verify CF dashboard shows two healthy connectors; smoke-test from phone | n/a |
-| 6 | Stop cloudflared service on dev box. External URL still works via NUC connector alone | `Start-Service cloudflared` on dev box |
-| 7 | Stop docker-compose on dev box. Dev box can now sleep | `docker compose up -d` on dev box |
+| 1 | Install Docker + compose plugin on NUC; clone repo; write `.env` with NUC-local `DATABASE_URL` | ✓ done |
+| 2 | Edit `pg_hba.conf` to allow Docker bridge (`172.16.0.0/12`); reload Postgres | ✓ done |
+| 3 | `docker compose -f docker-compose.yml -f docker-compose.nuc.yml up -d --build backend frontend` | ✓ done |
+| 4 | Install cloudflared on NUC (`cloudflared 2026.5.0`) with same tunnel token; systemd service | ✓ done |
+| 5 | Verified CF dashboard shows two healthy connectors | ✓ done |
+| 6 | Stopped cloudflared service on dev box | ✓ done |
+| 7 | Dev box can now sleep nightly | ✓ done |
 
 Cloudflare's tunnel layer load-balances across healthy connectors, which
 is what makes step 4–5 a true zero-downtime cutover: traffic naturally
@@ -748,18 +748,29 @@ shifts between the two as we go, and step 6 just removes one of the two
 healthy paths.
 
 **Architectural choices:**
-- **`network_mode: host` for the backend on the NUC.** Only one app
-  service, so the Docker bridge adds complexity without benefit. Backend
-  reaches Postgres directly at `localhost:5432`, same DSN that admin
-  scripts on the NUC would use.
+- **Bridge networking + `host-gateway` for the backend on the NUC.** The
+  backend container uses `extra_hosts: host.docker.internal:host-gateway`
+  and `DATABASE_URL` pointing at `host.docker.internal:5432`. This lets
+  the container reach native Postgres without host networking, while nginx
+  (frontend) still reaches the backend by service name on the Docker
+  bridge. The `- "8000:8000"` host port mapping was removed from the base
+  `docker-compose.yml` — nginx proxies internally, so the host binding was
+  never needed and conflicted with an existing process on the NUC.
 - **The compose `db` service is dropped on the NUC.** Postgres is already
   running natively on `:5432` — the compose service would port-conflict.
-  The "backup copy" role this container played on the dev box is no
-  longer needed once everything is on the NUC anyway.
 - **Image builds happen on the NUC.** First build will be slow (~3–5 min
   for backend) due to the CPU gap. If backend-code iteration becomes
   painful, switch to build-on-dev-box / `docker save | ssh nuc docker
   load`. Not worth it preemptively.
+
+**Dev override pattern:**
+
+When active dev work is happening on the dev box, `scripts/dev-on.ps1`
+(PowerShell, run from the dev box) starts the dev containers + local
+cloudflared, then SSHes to the NUC to stop its connector — giving the dev
+box exclusive traffic. `scripts/dev-off.ps1` reverses this. Requires
+SSH key auth from dev box to `root@db.internal.example` (one-time setup documented
+in both the scripts and CLAUDE.md).
 
 **Wi-Fi caveat.** The NUC is currently on `wlan0`. Cloudflared reconnects
 gracefully on packet loss, but users see occasional 5xx during reconnect.

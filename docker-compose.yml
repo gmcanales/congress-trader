@@ -24,8 +24,6 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REPORTS_DIR: /reports
       DOCS_DIR: /docs
-    ports:
-      - "8000:8000"
     volumes:
       # Read-only mounts so the API can list/serve generated reports and project docs
       - ./reports:/reports:ro
