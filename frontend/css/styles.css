@@ -1089,3 +1089,44 @@ input:focus { border-color: var(--accent); }
 }
 .pagination button:disabled { opacity: .35; cursor: not-allowed; }
 .pagination button:not(:disabled):hover { border-color: var(--text-muted); }
+
+/* ── Disclosure modal ── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+.modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 32px 24px;
+  max-width: 500px;
+  width: 92%;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+.modal-box h3 {
+  margin: 0 0 18px;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+.disclosure-list {
+  margin: 0 0 22px;
+  padding-left: 1.3em;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.75;
+}
+.disclosure-list li { margin-bottom: 10px; }
+.disclosure-list li:last-child { margin-bottom: 0; }
+.disclosure-list strong { color: var(--text); }
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

@@ -485,6 +485,21 @@
   <script src="js/app.js"></script>
   <script src="js/analysis.js"></script>
   <script src="js/recommendations.js"></script>
+
+  <div id="portfolio-disclosure-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="disclosure-title">
+    <div class="modal-box">
+      <h3 id="disclosure-title">A note before you add your first holding</h3>
+      <ul class="disclosure-list">
+        <li><strong>Your data is private.</strong> Holdings are tied to your login — other users on this app cannot view or access your portfolio.</li>
+        <li><strong>Stored locally.</strong> Data is saved to a private database running on a home server. It is not held by any cloud provider and is not shared with third parties.</li>
+        <li><strong>For informational use only.</strong> Nothing here is investment advice. We make no promises about returns, accuracy, or fitness for any purpose. Investing involves risk, including possible loss of principal.</li>
+      </ul>
+      <div class="modal-actions">
+        <button id="disclosure-accept-btn" class="btn-primary">Got it — add holding</button>
+        <button id="disclosure-cancel-btn" class="btn-ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
 </body>
 
 </html>

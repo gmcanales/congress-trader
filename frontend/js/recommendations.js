@@ -53,6 +53,24 @@
   const footerReports = document.getElementById('footer-reports');
   const footerDocs    = document.getElementById('footer-docs');
 
+  const disclosureModal     = document.getElementById('portfolio-disclosure-modal');
+  const disclosureAcceptBtn = document.getElementById('disclosure-accept-btn');
+  const disclosureCancelBtn = document.getElementById('disclosure-cancel-btn');
+
+  const DISCLOSURE_KEY = 'goosebase_portfolio_disclosure_v1';
+
+  function showDisclosureModal(onAccept) {
+    disclosureModal.classList.remove('hidden');
+    disclosureAcceptBtn.onclick = () => {
+      localStorage.setItem(DISCLOSURE_KEY, '1');
+      disclosureModal.classList.add('hidden');
+      onAccept();
+    };
+    disclosureCancelBtn.onclick = () => {
+      disclosureModal.classList.add('hidden');
+    };
+  }
+
   const PROFILE_COLORS = {
     conservative: '#58a6ff', // blue
     moderate:     '#d6a936', // amber
@@ -745,6 +763,15 @@
 
   async function onPortSave(e) {
     e.preventDefault();
+    const isNew = !portEditId.value;
+    if (isNew && !localStorage.getItem(DISCLOSURE_KEY)) {
+      showDisclosureModal(() => doPortSave());
+      return;
+    }
+    doPortSave();
+  }
+
+  async function doPortSave() {
     const body = {
       ticker: portTicker.value.trim().toUpperCase(),
       shares: parseFloat(portShares.value),
