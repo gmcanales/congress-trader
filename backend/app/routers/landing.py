@@ -33,7 +33,7 @@ ALLOWED_PALETTES = {
     "nightSky",
 }
 
-_PALETTE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,31}$")
+_PALETTE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,31}$")
 
 
 # ── Splash ──────────────────────────────────────────────────────────
