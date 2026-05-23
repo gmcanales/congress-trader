@@ -1,37 +1,119 @@
-/* Apply the active Goosebase palette as early as possible.
+/* Goosebase palette / dark-light toggle.
  *
- * Strategy: read a cached palette name from localStorage and set the
- * data-palette attribute synchronously so the first paint uses it.
- * Then fetch the canonical value from the API and update both the
- * attribute and the cache.
+ * Two canonical palettes drive the top-bar toggle:
+ *   - warmMarsh  → dark mode
+ *   - frankli    → light mode
  *
- * Include this script in <head> *before* any stylesheet that doesn't
- * need a cached value (it sets the attribute synchronously; the CSS
- * file references the attribute via :root[data-palette=...]).
+ * Three more are available via the /splash-admin dev tool but the
+ * toggle only flips between the canonical pair.
+ *
+ * Priority for the active palette on page load:
+ *   1. localStorage 'goosebase.palette' (per-device choice — toggle or dev tool)
+ *   2. server-stored value from /api/landing/palette (site default)
+ *   3. prefers-color-scheme media query
+ *   4. warmMarsh fallback
+ *
+ * Step (1) is read synchronously and applied before first paint to
+ * avoid FOUC. Steps (2)–(4) run after first paint.
+ *
+ * Include this script in <head> of every page that uses tokens.css.
  */
 (function () {
   const KEY = 'goosebase.palette';
-  const ALLOWED = new Set(['warmMarsh', 'cleanmeter', 'frankli', 'nightSky', 'sunset']);
+  const ALL = new Set(['warmMarsh', 'cleanmeter', 'frankli', 'nightSky', 'sunset']);
+  const DARK = 'warmMarsh';
+  const LIGHT = 'frankli';
 
-  const cached = (() => {
-    try { return localStorage.getItem(KEY); } catch (_) { return null; }
-  })();
-  if (cached && ALLOWED.has(cached)) {
-    document.documentElement.setAttribute('data-palette', cached);
+  // ── Synchronous (pre-paint) application ────────────────────────
+
+  function readCache() {
+    try {
+      const v = localStorage.getItem(KEY);
+      return v && ALL.has(v) ? v : null;
+    } catch (_) { return null; }
+  }
+
+  function systemDefault() {
+    try {
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? LIGHT : DARK;
+    } catch (_) { return DARK; }
   }
 
   function apply(name) {
-    if (!ALLOWED.has(name)) return;
+    if (!ALL.has(name)) return;
     document.documentElement.setAttribute('data-palette', name);
     try { localStorage.setItem(KEY, name); } catch (_) { /* ignore */ }
   }
 
-  fetch('/api/landing/palette', { cache: 'no-cache' })
-    .then(r => r.ok ? r.json() : null)
-    .then(data => { if (data && data.name) apply(data.name); })
-    .catch(() => { /* keep cached value */ });
+  // First paint: use cache if available, otherwise the system pref.
+  // We deliberately don't write the system default to localStorage —
+  // we only persist explicit user choices so a later OS theme change
+  // takes effect on the next visit.
+  const cached = readCache();
+  document.documentElement.setAttribute(
+    'data-palette',
+    cached || systemDefault()
+  );
 
-  // Expose for the dev tools page to apply previews without a round-trip.
+  // ── Async (post-paint) reconciliation ──────────────────────────
+
+  // If the user hasn't made a choice yet, the server-stored palette
+  // (set via the dev tool) wins over the system default.
+  if (!cached) {
+    fetch('/api/landing/palette', { cache: 'no-cache' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.name && ALL.has(data.name) && data.name !== readCache()) {
+          // Only override if the user *still* hasn't picked locally.
+          if (!readCache()) document.documentElement.setAttribute('data-palette', data.name);
+        }
+      })
+      .catch(() => { /* network is fine, system default stands */ });
+  }
+
+  // ── Cross-tab sync ────────────────────────────────────────────
+
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY && e.newValue && ALL.has(e.newValue)) {
+      document.documentElement.setAttribute('data-palette', e.newValue);
+    }
+  });
+
+  // ── Public API ────────────────────────────────────────────────
+
   window.Goosebase = window.Goosebase || {};
+
+  // Used by the dev tool to apply (and persist) a specific palette.
   window.Goosebase.applyPalette = apply;
+
+  // Used by the dev tool to *preview* without persisting.
+  window.Goosebase.previewPalette = (name) => {
+    if (ALL.has(name)) document.documentElement.setAttribute('data-palette', name);
+  };
+
+  // Top-bar toggle: flip between the canonical dark/light pair.
+  window.Goosebase.toggleTheme = () => {
+    const cur = document.documentElement.getAttribute('data-palette');
+    const next = cur === LIGHT ? DARK : LIGHT;
+    apply(next);
+    return next;
+  };
+
+  window.Goosebase.currentPalette = () =>
+    document.documentElement.getAttribute('data-palette');
+
+  window.Goosebase.isDark = () => {
+    const p = window.Goosebase.currentPalette();
+    return p !== LIGHT;   // every non-frankli palette is treated as dark
+  };
+
+  // Click handler for any element with [data-goosebase-toggle]. Used by
+  // the dark/light icon in each page's header.
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-goosebase-toggle]');
+    if (t) {
+      e.preventDefault();
+      window.Goosebase.toggleTheme();
+    }
+  });
 })();

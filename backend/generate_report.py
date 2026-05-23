@@ -566,14 +566,20 @@ def build_html(runs: list[dict], survival: list[dict], survival_meta: dict) -> s
 <html lang="en"><head><meta charset="utf-8">
 <title>Congress Trader — v1 Backtest Review</title>
 {plotly_theme.FONT_LINK}
+{plotly_theme.THEME_SCRIPT}
 <style>{CSS}</style>
 <script src="{PLOTLY_CDN}"></script>
 </head><body>
 <header>
-  <h1>Congress Trader — v1 Backtest Review</h1>
-  <div class="meta">Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
-      · runs #{', #'.join(str(r['id']) for r in runs)}
-      · dataset <b>{ds_name}</b></div>
+  <div class="report-header-inner">
+    <div class="titles">
+      <h1>Congress Trader — v1 Backtest Review</h1>
+      <div class="meta">Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
+          · runs #{', #'.join(str(r['id']) for r in runs)}
+          · dataset <b>{ds_name}</b></div>
+    </div>
+    {plotly_theme.THEME_TOGGLE_HTML}
+  </div>
 </header>
 
 <h2 id="tldr">TL;DR</h2>

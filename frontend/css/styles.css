@@ -27,6 +27,11 @@ html, body {
   align-items: center;
   gap: 12px;
 }
+.app-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .app-header h1 {
   font-family: var(--font-display);
   font-size: 17px;
@@ -227,6 +232,31 @@ input:focus { border-color: var(--accent); }
   cursor: pointer;
 }
 .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+
+/* ── Dark/light toggle ── */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+  background: var(--accent-soft);
+}
+.theme-toggle .icon-sun  { display: block; }
+.theme-toggle .icon-moon { display: none; }
+:root[data-palette="frankli"] .theme-toggle .icon-sun  { display: none; }
+:root[data-palette="frankli"] .theme-toggle .icon-moon { display: block; }
 
 .btn-ghost-sm {
   background: transparent;
@@ -473,7 +503,6 @@ input:focus { border-color: var(--accent); }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  margin-right: 10px;
 }
 .nav-btn {
   background: var(--bg);

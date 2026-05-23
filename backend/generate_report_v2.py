@@ -291,16 +291,22 @@ def build_html(runs: list[dict]) -> str:
 <html lang='en'><head><meta charset='utf-8'>
 <title>Congress Trader — Strategy Framework Report</title>
 {plotly_theme.FONT_LINK}
+{plotly_theme.THEME_SCRIPT}
 <style>{CSS}</style>
 <script src='{PLOTLY_CDN}'></script>
 </head><body>
 <header>
-  <h1>Congress Trader — Strategy Framework</h1>
-  <div class='meta'>
-    Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
-    · runs #{', #'.join(str(r['id']) for r in backtest_runs)}
-    {f"· bayes #{bayes_runs[0]['id']}" if bayes_runs else ''}
-    · OOS window <b>{test_window}</b>
+  <div class='report-header-inner'>
+    <div class='titles'>
+      <h1>Congress Trader — Strategy Framework</h1>
+      <div class='meta'>
+        Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
+        · runs #{', #'.join(str(r['id']) for r in backtest_runs)}
+        {f"· bayes #{bayes_runs[0]['id']}" if bayes_runs else ''}
+        · OOS window <b>{test_window}</b>
+      </div>
+    </div>
+    {plotly_theme.THEME_TOGGLE_HTML}
   </div>
 </header>
 
