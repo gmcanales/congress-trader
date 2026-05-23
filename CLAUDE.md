@@ -195,7 +195,7 @@ backend/ingest_leadership.py   one-shot: ingest committees/positions/party_contr
 frontend/js/{app,chart,analysis,api}.js
 docs/v2_leadership_plan.md     v2 scope, schema, data sources
 docs/international_disclosure_regimes.md  region-by-region survey of ~25 international parliamentary disclosure regimes; conclusion: US STOCK Act shape is essentially unique
-docs/us_state_disclosure_regimes.md       50-state survey of legislator disclosure regimes; conclusion: same annual-snapshot problem as international, plus 50× engineering surface. Surfaces congressional senior-staff PTRs as the cheaper internal expansion.
+docs/us_state_disclosure_regimes.md       50-state survey of legislator disclosure regimes; conclusion: same annual-snapshot problem as international, plus 50× engineering surface. (§8 documents that the originally-recommended congressional-staff PTRs alternative was investigated and ruled out — the 2013 S.716 amendment removed staff filings from public online disclosure.)
 reports/                       generated HTML reports (report_runs<ids>_<date>.html)
 docker-compose.yml  .env
 ```

@@ -398,38 +398,56 @@ Investigation grade the wrong thing for our specific need.
 
 ---
 
-## 8. The internal alternative — congressional senior staff PTRs
+## 8. The congressional-staff alternative — investigated, ruled out (2026-05-23)
 
-While searching for state-level analogs I kept hitting federal STOCK
-Act results, which surfaced a US-domestic expansion that DOES match
-the engine and we haven't yet ingested:
+**Initial premise (incorrect).** While surveying state-level data I
+noticed that the federal STOCK Act covers not just Members of Congress
+but also senior congressional staff (~2,000 individuals earning ≥120%
+of GS-15 base). The original 2012 STOCK Act required staff PTRs to be
+filed through the same House Clerk + Senate eFD disclosure systems we
+already scrape. I initially recommended this as a high-leverage
+internal expansion: ~5× dataset, same engine, no methodology change.
 
-**Congressional senior staff are covered by the STOCK Act.** Anyone
-earning ≥120% of the GS-15 base salary (~$170k threshold currently),
-which captures committee staff directors, leadership office staff,
-senior personal-office staff — approximately **2,000 covered
-individuals** across both chambers — files PTRs through the **same
-House Clerk and Senate eFD systems we already scrape**. Same shape,
-same value brackets, same 30/45-day filing rule, same filing
-infrastructure.
+**Correction.** That recommendation was based on stale understanding
+of the law. **S.716 (April 2013)** — passed by unanimous consent in
+the House after 14 seconds of debate, signed into law April 15, 2013 —
+explicitly walked back the online-publication requirement for staff:
 
-**Why this matters:**
-- ~5× dataset expansion using infrastructure already built — the
-  existing scrapers (`backend/app/services/scraper.py` for House,
-  `senate_scraper.py` for Senate) hit the same source URLs but filter
-  to member filings only. Plumbing staff filings through is a
-  small extension, not a new ingest pipeline.
-- **Different selection.** Senior staff have policy-information
-  access without the public-figure scrutiny that may shape member
-  trading. Whether the v1/v2/v2.5 nulls replicate on this less-
-  scrutinized population is a clean fresh test.
-- **No methodology change.** The engine, the schema, and the analysis
-  scripts all work unchanged.
+> "S.716 modified the online disclosure portion of the STOCK Act so
+> that congressional staff and certain executive branch officers and
+> employees were no longer required to publicly report financial
+> disclosure statements online... The amendment eliminated the
+> requirement for the creation of a searchable, sortable database of
+> information in reports, and the requirement that reports be done in
+> electronic format, rather than on paper."
 
-This dominates state-level on every cost/benefit axis. State-level
-requires 50 separate ingest paths to get annual snapshots that don't
-fit the engine; congressional staff requires extending one existing
-scraper to ingest per-trade events with values that DO fit the engine.
+The amendment did NOT touch members, candidates, the President, or
+VP — they still file publicly online.
+
+**Empirical confirmation (2026-05-23):**
+- 2024 House FD index ZIP: 451 PTR rows; **all** carry district codes
+  (i.e., all are members). Zero PTRs from non-members.
+- House Clerk's search page (`disclosures-clerk.house.gov/FinancialDisclosure/ViewSearch`)
+  exposes only `ViewMemberSearchResult` and `ViewCandidateSearchResult`
+  form actions. No staff/officer/employee option.
+- Senate eFD search page similarly has no staff filer-type option.
+
+**Conclusion.** Staff PTRs still exist (the underlying filing
+requirement wasn't removed), but they are available only at the
+Legislative Resource Center (House) and Senate Library (Senate) on
+paper or via per-document request. **Bulk ingest is not feasible.**
+This is exactly the access pattern the S.716 amendment intended to
+restore.
+
+The 5× dataset expansion claim doesn't survive contact with the actual
+data infrastructure. See `docs/decision_log.md` §6.2 for the corrected
+roadmap entry.
+
+**What was true and what wasn't:**
+- ✓ STOCK Act DOES require senior staff to file PTRs
+- ✓ The 2012 law DID provide for a searchable database
+- ✗ The 2012 provision was rolled back in 2013
+- ✗ Staff PTRs are NOT bulk-accessible online today
 
 ---
 
@@ -444,26 +462,29 @@ filed PDF-style without even mySociety-equivalent aggregation, and worse
 than France HATVP (5/8) because there's no Etalab-equivalent open data
 portal.
 
-The three options for the project are the same as the international
-report concluded:
+Real options after correcting the staff finding (see §8):
 
 | Option | Cost | Signal value |
 |---|---|---|
 | **(a) Forced fit of state annual snapshots.** Build 50 PDF parsers and treat each annual filing as a fake "transaction" on the filing date | Very high (50 jurisdictions) | Low — same lossy semantics as international, plus jurisdiction-scoping issues like CA Form 700 |
 | **(b) Holdings-replication framework.** Build a parallel analysis track that ingests annual snapshots and computes time-weighted portfolio returns | High (~4-6 weeks setup, then per-jurisdiction marginal) | Genuine cross-jurisdictional comparison on the correct question for *that* data shape |
-| **(c) Congressional senior staff PTRs.** Extend existing scrapers to include staff filings | **Low (~1-2 weeks)** | **Direct ~5× dataset expansion, same engine, fresh selection — best ratio on offer** |
+| ~~**(c) Congressional senior staff PTRs.**~~ | ~~Low~~ | **Not feasible.** S.716 (2013) removed online publication of staff filings; bulk access doesn't exist. See §8. |
 | **(d) Policy-event windows on existing data.** Stratify existing US member trades by proximity to dated policy events | Low | Tests information-channel hypothesis with tighter temporal prior; uses everything we have |
+| **(e) OGE Form 278-T (cabinet / executive branch).** ~25 cabinet + ~50 sub-cabinet officials file 278-T (same shape as Congressional PTR). Accessible via OGE Form 201 request — paper-based, weeks-of-turnaround, but feasible at small universe size | Medium (records-request workflow, weeks of latency, then PDF parsing reuses existing pipeline) | Small but PTR-shape and engine-compatible; constrained by 2025-01-03 trifecta cohort confound |
 
-**Recommendation: (c) is the highest-ratio internal expansion.**
-State-level is essentially a more expensive version of the
-international holdings problem we just rejected. Senior congressional
-staff is the same data shape as members, same filing system, same
-engine compatibility — and gives us a fresh, less-scrutinized
-population to test all three of v1/v2/v2.5's nulls against.
+**Updated recommendation: (d) policy-event windows + (e) OGE 278-T.**
 
-**(d) remains the lowest-cost option** and stays on the roadmap (see
-`docs/decision_log.md` §6.1). (c) and (d) are complementary, not
-mutually exclusive.
+(d) remains the lowest-cost path and was always the right "uses what
+we have" option. It stays on the roadmap (see `docs/decision_log.md`
+§6.1).
+
+(e) is the smallest viable new-data option now that staff is ruled out.
+Executive-branch 278-T filings are publicly available but only via
+request (not online bulk), so the engineering shape is: file Form 201
+with OGE, wait weeks for PDFs, parse with our existing `ptr_parser.py`
++ `ocr.py` pipeline. Universe is ~75 officials. Constrained by the
+same cohort confound v2 had: all cabinet officials turned over at
+2025-01-03 trifecta, so leadership/regime variables are collinear.
 
 ---
 

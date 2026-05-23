@@ -795,42 +795,106 @@ External data sources **considered but deferred**:
   scrape, same engine compatibility, ~5× dataset expansion). See §6.2
   below.
 
-### 6.2 Congressional senior staff PTRs (roadmap, candidate)
+### 6.2 Congressional senior staff PTRs — investigated, ruled out (2026-05-23)
 
-**Why.** Surfaced during the 2026-05-23 state-level scoping
-(documented in `docs/us_state_disclosure_regimes.md` §8). STOCK Act
-covers senior congressional staff (anyone earning ≥120% of GS-15 base,
-roughly $170k), capturing committee staff directors, leadership
-office staff, and senior personal-office staff — approximately 2,000
-covered individuals across both chambers. They file PTRs through the
-**same House Clerk and Senate eFD systems we already scrape** for
-member filings. Same shape, same value brackets, same 30/45-day rule,
-same filing infrastructure.
+**Initial roadmap entry (incorrect).** Surfaced during the state-level
+scoping, I positioned senior congressional staff PTRs as the
+highest-ratio internal expansion: ~2,000 STOCK-Act-covered filers
+using the same House Clerk + Senate eFD systems we already scrape,
+~5× dataset growth, same engine compatibility.
 
-**Why this is the highest-ratio internal expansion.**
-- ~5× dataset growth using infrastructure already built. The existing
-  scrapers (`backend/app/services/scraper.py`, `senate_scraper.py`)
-  currently filter to member filings only; plumbing staff filings is
-  a small extension, not a new ingest pipeline.
-- Different selection. Senior staff have policy-information access
-  without the public-figure scrutiny that may shape member trading
-  behavior. Whether the v1/v2/v2.5 nulls replicate on this
-  less-scrutinized population is a clean fresh test.
-- No methodology change. The engine, the schema, the analysis scripts
-  all work unchanged.
+**Correction (same day).** The recommendation was based on stale
+understanding of the law. The 2012 STOCK Act DID provide for staff
+PTRs to be publicly posted online, but **S.716 (April 2013)** —
+passed by unanimous consent in 14 seconds of House debate, signed
+April 15, 2013 — explicitly walked back the online-publication
+requirement for staff:
 
-**Status.** Roadmapped, not started. Complementary to §6.1
-(policy-event windows) rather than alternative.
+> "S.716 modified the online disclosure portion of the STOCK Act so
+> that congressional staff and certain executive branch officers and
+> employees were no longer required to publicly report financial
+> disclosure statements online... The amendment eliminated the
+> requirement for the creation of a searchable, sortable database of
+> information in reports, and the requirement that reports be done in
+> electronic format, rather than on paper."
 
-**Engine change required.** Small. New `is_staff` boolean column on
-`members` (or a `filer_type` enum if we want to be more expressive),
-backfilled to `False` for current US Congress members. New ingest
-pass over the same scraper sources filtering on staff-filer flag.
+Members of Congress, candidates, the President, and VP were
+unaffected — they still file publicly online and via the same bulk
+infrastructure.
 
-**What this does NOT do.** It doesn't add a new theoretical primitive
-either — it's still the same population shape, just larger. If the
-v1/v2/v2.5 nulls *also* hold on senior staff, that's strong
-confirmation that the broad PTR universe has no edge to find.
+**Empirical verification:**
+- 2024 House FD index ZIP: 451 PTR rows, **all** with district codes
+  (i.e., members only). Zero PTRs from non-members.
+- `disclosures-clerk.house.gov/FinancialDisclosure/ViewSearch` exposes
+  only `ViewMemberSearchResult` and `ViewCandidateSearchResult` form
+  actions. No staff/officer search option.
+- Senate eFD search page has no staff filer-type option either.
+
+**Verdict.** Staff PTRs still exist (the underlying filing requirement
+wasn't removed) but are accessible only at the Legislative Resource
+Center (House) and Senate Library (Senate) — paper or per-document
+request, not bulk. Engineering cost to acquire is prohibitive at the
+~2,000-filer scale; the path I'd previously claimed reuses existing
+infrastructure doesn't exist.
+
+**What this means for the roadmap.** The "internal expansion that
+matches the engine" slot is now §6.3 (OGE 278-T, executive branch),
+not staff. §6.1 (policy-event windows on existing data) remains the
+lowest-cost option.
+
+**What was true and what wasn't:**
+- ✓ STOCK Act DOES require senior staff to file PTRs
+- ✓ The 2012 law DID originally provide for a searchable staff database
+- ✗ The 2012 provision was rolled back by S.716 in 2013
+- ✗ Staff PTRs are NOT bulk-accessible online today
+
+### 6.3 OGE Form 278-T (cabinet / executive branch) — roadmap, candidate
+
+**Why.** With staff ruled out, OGE 278-T is the next smallest viable
+new-data option that's PTR-shape and engine-compatible. Covered
+universe is ~25 cabinet + ~50 senior sub-cabinet officials (~75
+total). 278-T is the Periodic Transaction Report for the executive
+branch — same shape as Congress PTRs, same value brackets, same
+30/45-day rule, same parser pipeline.
+
+**Data access.** OGE 278-T filings are publicly available but **not
+online in bulk**. Public output is PDFs released via OGE Form 201
+request (see `memory/reference_political_disclosure_sources.md`).
+Typical turnaround: weeks. The S.716 (2013) amendment that removed
+online publication for staff also affected "certain executive branch
+officers and employees" below President/VP — which is why OGE 278-T
+isn't on a public bulk feed analogous to disclosures-clerk.house.gov.
+
+**Engineering shape.**
+1. File OGE Form 201 with the agency requesting cabinet + senior
+   sub-cabinet 278-T filings for 2021–2025.
+2. Wait weeks for PDF delivery.
+3. Parse with the existing `services/ptr_parser.py` + `services/ocr.py`
+   pipeline (~12% scanned-form failure rate expected; same as House).
+4. Schema additions: same `filer_type` enum we'd discussed for staff
+   (now `'member'` / `'executive'`), no employer-relationship
+   complexity because cabinet officials work for the President as a
+   class rather than for individual members.
+
+**Status.** Roadmapped, not started. Pending decision on whether to
+file the Form 201 request now (to start the multi-week wait clock)
+or scope policy-event windows first (§6.1) and revisit later.
+
+**Constraints worth flagging up-front.**
+- **2025-01-03 trifecta cohort confound.** All cabinet officials
+  turned over at administration change, so leadership / party / regime
+  variables become collinear with `is_post_trifecta` — same issue v2
+  hit, possibly worse because the cabinet universe is smaller and
+  the turnover is total.
+- **Stricter divestiture rules than Congress.** Cabinet officials
+  often divest into qualified blind trusts (certificate of divestiture
+  under 26 USC §1043). The people who *still trade openly* are a
+  self-selected slice. Population is structurally different from
+  Congress, not just smaller.
+- **Small universe means underpowered analysis.** ~75 officials × 5
+  years probably yields <500 analyzable trades after divestiture
+  filtering. Comparable to the v2 leadership cut (~600 leadership
+  trades) but with more confounds.
 
 ### 6.1 Policy-event windows (roadmap, on deck)
 
