@@ -437,13 +437,10 @@
     const m = { t: 14, r: 14, b: 26, l: 50 };
     svg.attr('viewBox', `0 0 ${W} ${H}`);
 
-    // Unified date domain (intersection isn't right; use union)
+    // Original (un-zoomed) domains
     const allDates = profiles.flatMap(p => p.dates.map(d => new Date(d)));
-    const xExtentRaw = d3.extent(allDates);
-    const xExtent = data._zoomDomain || xExtentRaw;
-    const x = d3.scaleTime().domain(xExtent).range([m.l, W - m.r]);
+    const xOrig = d3.scaleTime().domain(d3.extent(allDates)).range([m.l, W - m.r]);
 
-    // y: include strategy, benchmark, band extremes — and the user portfolio NAV
     const yVals = [];
     profiles.forEach(p => {
       p.strategy.forEach(v => v != null && yVals.push(v));
@@ -454,38 +451,43 @@
     if (lastPortNav && lastPortNav.series) {
       lastPortNav.series.forEach(d => d.nav != null && yVals.push(d.nav));
     }
-    const y = d3.scaleLinear()
+    const yOrig = d3.scaleLinear()
       .domain([d3.min(yVals), d3.max(yVals)]).nice()
       .range([H - m.b, m.t]);
 
-    // Grid
-    svg.append('g').attr('class', 'axis')
-      .attr('transform', `translate(0,${H - m.b})`)
-      .call(d3.axisBottom(x).ticks(6));
-    svg.append('g').attr('class', 'axis')
-      .attr('transform', `translate(${m.l},0)`)
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format('.2f')));
+    let x = xOrig.copy(), y = yOrig.copy();
 
-    // Reference line at NAV = 1
-    if (y.domain()[0] <= 1 && y.domain()[1] >= 1) {
-      svg.append('line')
+    // Clip path so pan/zoom doesn't leak past the plot area
+    svg.append('defs').append('clipPath').attr('id', 'strat-clip')
+      .append('rect').attr('x', m.l).attr('y', m.t)
+      .attr('width', W - m.l - m.r).attr('height', H - m.t - m.b);
+
+    // Axes (refreshed on each redraw)
+    const xAxisG = svg.append('g').attr('class', 'axis')
+      .attr('transform', `translate(0,${H - m.b})`);
+    const yAxisG = svg.append('g').attr('class', 'axis')
+      .attr('transform', `translate(${m.l},0)`);
+
+    // Clipped plot group
+    const plot = svg.append('g').attr('clip-path', 'url(#strat-clip)');
+
+    // Reference line at NAV = 1 (only drawn if 1 is within original domain)
+    const refLine = (yOrig.domain()[0] <= 1 && yOrig.domain()[1] >= 1)
+      ? plot.append('line')
         .attr('x1', m.l).attr('x2', W - m.r)
-        .attr('y1', y(1)).attr('y2', y(1))
         .attr('stroke', 'var(--border)')
-        .attr('stroke-dasharray', '3,3');
-    }
+        .attr('stroke-dasharray', '3,3')
+      : null;
 
-    // Bench (one of them — pick conservative's benchmark since they share SPY)
+    // Benchmark (shared SPY across profiles — pick the first)
     const benchData = profiles[0].dates.map((d, i) => ({
       date: new Date(d), v: profiles[0].benchmark[i],
     })).filter(d => d.v != null);
-    const benchLine = d3.line().x(d => x(d.date)).y(d => y(d.v));
-    svg.append('path').datum(benchData)
-      .attr('class', 'strat-bench')
-      .attr('d', benchLine);
+    const benchPath = plot.append('path').datum(benchData)
+      .attr('class', 'strat-bench');
 
-    // For each profile: shaded band + line
-    profiles.forEach(p => {
+    // Per-profile band + line
+    const profilePlots = profiles.map(p => {
       const color = PROFILE_COLORS[p.key] || '#888';
       const pts = p.dates.map((d, i) => ({
         date: new Date(d),
@@ -493,37 +495,52 @@
         lo: p.band_lo ? p.band_lo[i] : null,
         hi: p.band_hi ? p.band_hi[i] : null,
       }));
-      // Band area (only over points where lo & hi defined)
-      const bandPts = pts.filter(p => p.lo != null && p.hi != null);
-      if (bandPts.length > 1) {
-        const area = d3.area()
-          .x(d => x(d.date))
-          .y0(d => y(d.lo))
-          .y1(d => y(d.hi));
-        svg.append('path').datum(bandPts)
-          .attr('class', 'strat-band')
-          .attr('fill', color)
-          .attr('d', area);
-      }
-      const line = d3.line().x(d => x(d.date)).y(d => y(d.v));
-      svg.append('path').datum(pts.filter(d => d.v != null))
+      const bandPts = pts.filter(q => q.lo != null && q.hi != null);
+      const bandPath = bandPts.length > 1
+        ? plot.append('path').datum(bandPts).attr('class', 'strat-band').attr('fill', color)
+        : null;
+      const linePath = plot.append('path')
+        .datum(pts.filter(d => d.v != null))
         .attr('class', 'strat-line')
-        .attr('stroke', color)
-        .attr('d', line);
+        .attr('stroke', color);
+      return { bandPath, linePath };
     });
 
-    // User portfolio overlay — bold red, drawn last so it sits on top.
-    if (lastPortNav && lastPortNav.series && lastPortNav.series.length) {
-      const userPts = lastPortNav.series
-        .map(d => ({ date: new Date(d.date), v: d.nav }))
-        .filter(d => d.v != null);
-      if (userPts.length > 1) {
-        const userLine = d3.line().x(d => x(d.date)).y(d => y(d.v));
-        svg.append('path').datum(userPts)
-          .attr('class', 'strat-user')
-          .attr('d', userLine);
+    // User portfolio overlay — bold red, drawn last so it sits on top
+    const userPts = (lastPortNav && lastPortNav.series && lastPortNav.series.length)
+      ? lastPortNav.series.map(d => ({ date: new Date(d.date), v: d.nav })).filter(d => d.v != null)
+      : [];
+    const userPath = userPts.length > 1
+      ? plot.append('path').datum(userPts).attr('class', 'strat-user')
+      : null;
+
+    function redraw() {
+      xAxisG.call(d3.axisBottom(x).ticks(6));
+      yAxisG.call(d3.axisLeft(y).ticks(5).tickFormat(d3.format('.2f')));
+
+      if (refLine) refLine.attr('y1', y(1)).attr('y2', y(1));
+
+      const benchLineFn = d3.line().x(d => x(d.date)).y(d => y(d.v));
+      benchPath.attr('d', benchLineFn);
+
+      profilePlots.forEach(pp => {
+        if (pp.bandPath) {
+          const area = d3.area()
+            .x(d => x(d.date))
+            .y0(d => y(d.lo))
+            .y1(d => y(d.hi));
+          pp.bandPath.attr('d', area);
+        }
+        const lineFn = d3.line().x(d => x(d.date)).y(d => y(d.v));
+        pp.linePath.attr('d', lineFn);
+      });
+
+      if (userPath) {
+        const userLineFn = d3.line().x(d => x(d.date)).y(d => y(d.v));
+        userPath.attr('d', userLineFn);
       }
     }
+    redraw();
 
     // Hover tooltip + crosshair
     let tip = stratChartWrap.querySelector('.strat-tooltip');
@@ -539,6 +556,7 @@
       .attr('stroke-dasharray', '2,3');
 
     const overlay = svg.append('rect')
+      .attr('class', 'zoom-capture')
       .attr('x', m.l).attr('y', m.t)
       .attr('width', W - m.r - m.l).attr('height', H - m.b - m.t)
       .attr('fill', 'transparent');
@@ -561,7 +579,6 @@
           ? ` (${lo.toFixed(3)}–${hi.toFixed(3)})` : '';
         return `<div><span style="color:${c}">●</span> <b>${p.label}</b>: ${v ? v.toFixed(3) : '—'} ${ret}${band}</div>`;
       });
-      // User portfolio at the cursor date
       if (lastPortNav && lastPortNav.series && lastPortNav.series.length) {
         const sDates = lastPortNav.series.map(d => new Date(d.date));
         const j = Math.min(
@@ -576,7 +593,6 @@
       }
       const dateLabel = xVal.toISOString().slice(0, 10);
       tip.innerHTML = `<div style="color:var(--text-muted);margin-bottom:3px">${dateLabel}</div>` + lines.join('');
-      // position
       const rect = stratChartWrap.getBoundingClientRect();
       const xSvgPct = mx / parseFloat(svg.attr('viewBox').split(' ')[2]);
       const xPx = xSvgPct * rect.width;
@@ -586,27 +602,19 @@
       tip.style.top = '8px';
     });
 
-    // Wheel zoom — rescale x domain around pointer and redraw
-    svg.on('wheel.zoom', event => {
-      event.preventDefault();
-      if (!lastStratData) return;
-      const [mx] = d3.pointer(event, stratChartEl);
-      const curDomain = x.domain();
-      const center = x.invert(mx);
-      const factor = event.deltaY > 0 ? 1.25 : 0.8;
-      const newD0 = new Date(+center - (+center - +curDomain[0]) * factor);
-      const newD1 = new Date(+center + (+curDomain[1] - +center) * factor);
-      lastStratData._zoomDomain = [newD0, newD1];
-      drawStrategyChart(lastStratData);
-    });
-
-    // Double-click to reset zoom
-    svg.on('dblclick.zoom', () => {
-      if (lastStratData) {
-        delete lastStratData._zoomDomain;
-        drawStrategyChart(lastStratData);
-      }
-    });
+    // Zoom: wheel + drag-pan, x and y both rescale — matches Analysis
+    const zoom = d3.zoom().scaleExtent([1, 50])
+      .on('zoom', event => {
+        x = event.transform.rescaleX(xOrig);
+        y = event.transform.rescaleY(yOrig);
+        redraw();
+        data._zoomTransform = event.transform;
+      });
+    svg.call(zoom);
+    // Preserve zoom across redraws (holdings refresh, legend updates)
+    if (data._zoomTransform) {
+      svg.call(zoom.transform, data._zoomTransform);
+    }
   }
 
   // ── user portfolio ─────────────────────────────────────────────────────────

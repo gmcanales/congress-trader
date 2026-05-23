@@ -69,8 +69,9 @@
   // ── Async (post-paint) reconciliation ──────────────────────────
 
   // If the user hasn't made a choice yet, the server-stored palette
-  // (set via the dev tool) wins over the system default.
-  if (!cached) {
+  // (set via the dev tool) wins over the system default. Skip on the
+  // landing page — its head script picks a palette from local time.
+  if (!cached && location.pathname !== '/') {
     fetch('/api/landing/palette', { cache: 'no-cache' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {

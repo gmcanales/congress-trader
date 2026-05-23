@@ -3,8 +3,6 @@ class TradeChart {
     this.svgId = svgId;
     this.tooltipId = tooltipId;
     this.margin = { top: 16, right: 24, bottom: 24, left: 64 };
-    this.contextH = 56;
-    this.contextGap = 24;
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -20,9 +18,7 @@ class TradeChart {
     this._setup(W, H);
     this._buildScales();
     this._drawFocus();
-    this._drawContext();
-    this._setupBrush();
-    this._setupDragPan();
+    this._setupZoom();
   }
 
   clear() {
@@ -34,39 +30,33 @@ class TradeChart {
   _setup(W, H) {
     const m = this.margin;
     this.W = W - m.left - m.right;
-    this.focusH = H - m.top - m.bottom - this.contextH - this.contextGap;
+    this.focusH = H - m.top - m.bottom;
 
-    const svg = d3.select(`#${this.svgId}`)
+    this.svg = d3.select(`#${this.svgId}`)
       .attr('width', W)
       .attr('height', H);
-    svg.selectAll('*').remove();
+    this.svg.selectAll('*').remove();
 
-    svg.append('defs').append('clipPath')
+    this.svg.append('defs').append('clipPath')
       .attr('id', 'price-clip')
       .append('rect')
       .attr('width', this.W)
       .attr('height', this.focusH + 6)
       .attr('y', -6);
 
-    this.focus = svg.append('g')
+    this.focus = this.svg.append('g')
       .attr('class', 'focus')
       .attr('transform', `translate(${m.left},${m.top})`);
-
-    this.ctx = svg.append('g')
-      .attr('class', 'context')
-      .attr('transform', `translate(${m.left},${m.top + this.focusH + this.contextGap})`);
   }
 
   // ── Scales ────────────────────────────────────────────────────────────────
 
   _buildScales() {
     const ext = d3.extent(this.prices, d => d.date);
-    this.xFull = d3.scaleTime().domain(ext).range([0, this.W]);
-    this.xFocus = this.xFull.copy();
-    this.yFull = this._yDomain(this.prices, this.focusH);
-    this.yFocus = this.yFull.copy();
-    this.xCtx = this.xFull.copy();
-    this.yCtx = this._yDomain(this.prices, this.contextH);
+    this.xOrig = d3.scaleTime().domain(ext).range([0, this.W]);
+    this.yOrig = this._yDomain(this.prices, this.focusH);
+    this.xFocus = this.xOrig.copy();
+    this.yFocus = this.yOrig.copy();
   }
 
   _yDomain(data, height) {
@@ -78,9 +68,16 @@ class TradeChart {
   // ── Focus chart ───────────────────────────────────────────────────────────
 
   _drawFocus() {
+    // Invisible capture rect goes first so markers stay on top and clickable.
+    this.zoomRect = this.focus.append('rect')
+      .attr('class', 'zoom-capture')
+      .attr('width', this.W)
+      .attr('height', this.focusH)
+      .attr('fill', 'transparent');
+
     this._drawGrid();
-    this._drawArea(this.focus, this.xFocus, this.yFocus, this.focusH, 'focus-area');
-    this._drawLine(this.focus, this.xFocus, this.yFocus, 'focus-line');
+    this.areaPath = this._drawArea(this.focus, this.xFocus, this.yFocus, this.focusH, 'focus-area');
+    this.linePath = this._drawLine(this.focus, this.xFocus, this.yFocus, 'focus-line');
     this._drawMarkers();
     this._drawFocusAxes();
   }
@@ -233,50 +230,24 @@ class TradeChart {
     tooltip.style('left', `${x}px`).style('top', `${event.clientY - 10}px`);
   }
 
-  // ── Context / brush ───────────────────────────────────────────────────────
+  // ── Zoom (wheel + drag-pan, x and y) ──────────────────────────────────────
 
-  _drawContext() {
-    const lineCtx = d3.line()
-      .x(d => this.xCtx(d.date))
-      .y(d => this.yCtx(d.close));
-
-    this.ctx.append('path')
-      .datum(this.prices)
-      .attr('class', 'price-line context-line')
-      .attr('d', lineCtx);
-
-    this.ctx.append('g')
-      .attr('class', 'x-axis')
-      .attr('transform', `translate(0,${this.contextH})`)
-      .call(d3.axisBottom(this.xCtx).ticks(8));
-  }
-
-  _setupBrush() {
+  _setupZoom() {
     const self = this;
-    this.brush = d3.brushX()
-      .extent([[0, 0], [this.W, this.contextH]])
-      .on('brush end', function (event) {
-        if (!event.selection) return;
-        const [x0, x1] = event.selection.map(self.xCtx.invert);
-        self.xFocus.domain([x0, x1]);
-
-        const visible = self.prices.filter(d => d.date >= x0 && d.date <= x1);
-        if (visible.length > 1) {
-          self.yFocus.domain([
-            d3.min(visible, d => d.low)  * 0.98,
-            d3.max(visible, d => d.high) * 1.02,
-          ]);
-        }
-        self._updateFocus();
+    const zoom = d3.zoom()
+      .scaleExtent([1, 50])
+      .on('zoom', event => {
+        self.xFocus = event.transform.rescaleX(self.xOrig);
+        self.yFocus = event.transform.rescaleY(self.yOrig);
+        self._redraw();
       });
 
-    this.brushG = this.ctx.append('g')
-      .attr('class', 'brush')
-      .call(this.brush)
-      .call(this.brush.move, this.xCtx.range());
+    // Attach to SVG so wheel/drag events anywhere (including over markers)
+    // trigger the same zoom behavior — matches the Analysis chart.
+    this.svg.call(zoom);
   }
 
-  _updateFocus() {
+  _redraw() {
     const line = d3.line()
       .x(d => this.xFocus(d.date))
       .y(d => this.yFocus(d.close))
@@ -288,47 +259,11 @@ class TradeChart {
       .y1(d => this.yFocus(d.close))
       .curve(d3.curveMonotoneX);
 
-    this.focus.select('.focus-line').attr('d', line);
-    this.focus.select('.focus-area').attr('d', area);
+    this.linePath.attr('d', line);
+    this.areaPath.attr('d', area);
     this.xAxisG.call(d3.axisBottom(this.xFocus).ticks(6));
     this.yAxisG.call(d3.axisLeft(this.yFocus).ticks(6).tickFormat(d => `$${d3.format(',.0f')(d)}`));
     this._updateGrid();
     this._drawMarkers();
-  }
-
-  _setupDragPan() {
-    const self = this;
-    let x0 = null;
-    let domain0 = null;
-
-    const drag = d3.drag()
-      .on('start', function (event) {
-        x0 = event.x;
-        domain0 = self.xFocus.domain().slice();
-      })
-      .on('drag', function (event) {
-        const dx = event.x - x0;
-        const [r0, r1] = self.xFocus.range();
-        const msPerPx = (domain0[1] - domain0[0]) / (r1 - r0);
-        const shift = -dx * msPerPx;
-
-        const [full0, full1] = self.xFull.domain();
-        let d0 = new Date(domain0[0].getTime() + shift);
-        let d1 = new Date(domain0[1].getTime() + shift);
-
-        if (d0 < full0) { const over = full0 - d0; d0 = new Date(full0); d1 = new Date(d1.getTime() + over); }
-        if (d1 > full1) { const over = d1 - full1; d1 = new Date(full1); d0 = new Date(d0.getTime() - over); }
-
-        self.xFocus.domain([d0, d1]);
-        self._updateFocus();
-        self.brushG.call(self.brush.move, [self.xCtx(d0), self.xCtx(d1)]);
-      });
-
-    this.focus.append('rect')
-      .attr('class', 'zoom-capture')
-      .attr('width', this.W)
-      .attr('height', this.focusH)
-      .attr('fill', 'transparent')
-      .call(drag);
   }
 }
