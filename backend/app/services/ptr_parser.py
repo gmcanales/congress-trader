@@ -227,10 +227,137 @@ def _parse_table(table_lines: list[str], base_confidence: str) -> list[ParsedTra
     return transactions
 
 
+# ── OGE Form 278-T parsing (cabinet / executive branch, 2026-05-23) ─────────
+# 278-T tables differ from House PTR tables on every column:
+#   House:  ID | Owner | Asset | Type-letter | Date | Notif | Amount
+#   278-T:  # | Description | Type-word | Date | Notif-flag | Amount
+# Key differences:
+#   - No owner column (cabinet officials file individually; no SP/JT/DC)
+#   - No ticker column (description is raw company / asset name; resolution
+#     happens downstream)
+#   - Transaction types spelled out ("Purchase" / "Sale (Full)" / etc.)
+#   - Notification is a YES/NO flag for "over 30 days", not a date
+# Layout is wide and field-positions vary, so we anchor on the right-side
+# columns (type word + date + amount) and recover the description from the
+# left.
+
+ANCHOR_RE_278T = re.compile(
+    r"^\s+(?P<desc>\S.*?)\s{2,}"
+    r"(?P<type>Purchase|Sale\s*\([A-Za-z]+\)|Sale|Exchange)\s+"
+    r"(?P<txdate>\d{1,2}/\d{1,2}/\d{4})\s+"
+    r"(?P<amt>(?:\$|Over\s*\$)[\d,. \-•$]+)\s*$"
+)
+
+TYPE_MAP_278T = {
+    "Purchase":         "purchase",
+    "Sale":             "sale",
+    "Sale (Full)":      "sale",
+    "Sale (Partial)":   "sale_partial",
+    "Sale (partial)":   "sale_partial",
+    "Exchange":         "exchange",
+}
+
+
+def _is_278t(text: str) -> bool:
+    """Detect whether this PDF is an OGE Form 278-T (executive branch) vs
+    a House PTR. The form name appears in the header of every page."""
+    return "OGE Form 278-T" in text or "OGE Fonn 278-T" in text  # poppler typo
+
+
+def _parse_amount_278t(raw: str) -> tuple[Optional[float], Optional[float]]:
+    """Same brackets as House PTR. Tolerates the en-dash / bullet glyphs and
+    space-inside-number artifacts ("$1 ,000,000" → "$1,000,000") that
+    poppler's pdftotext frequently emits on 278-T form layouts."""
+    raw = re.sub(r"[•–—]", "-", raw or "")
+    # Strip space inserted between a digit and a comma (the most common artifact)
+    raw = re.sub(r"(\d)\s+(,)", r"\1\2", raw)
+    # And between a comma and a digit
+    raw = re.sub(r"(,)\s+(\d)", r"\1\2", raw)
+    raw = raw.replace("$ ", "$").strip()
+    return _parse_amount(raw)
+
+
+def parse_278t_text(text: str, source: str = "digital") -> ParsedPTR:
+    """Parse an OGE 278-T PDF's already-extracted text. `source` is
+    'digital' or 'ocr'. Returns a ParsedPTR where:
+      - `transactions[].owner` is always None (278-T has no owner column)
+      - `transactions[].ticker` is always None (description-only; resolve
+        to a ticker downstream)
+      - `transactions[].notification_date` is always None (278-T uses a
+        boolean flag, not a date)
+      - `asset_name` is the full description string verbatim
+    """
+    result = ParsedPTR(parse_method=source)
+
+    # Filer name lives in the form-header table near the top of the PDF.
+    # Layout (column headers on one line, values on the next):
+    #   "Last Name  [whitespace] First Name [whitespace] Mi"
+    #   "Trump      [whitespace] Donald"
+    # poppler sometimes collapses the trailing "Mi" header label into the
+    # preceding "First Name" cell — be lenient.
+    header_m = re.search(
+        r"Last Name\s+First Name(?:\s+M[il]?)?\s*\n+(\S[^\n]*?)\s{3,}(\S[^\n]*?)(?:\s+|$)",
+        text,
+    )
+    if header_m:
+        last = header_m.group(1).strip()
+        first = header_m.group(2).strip()
+        result.member_name = f"{first} {last}".strip()
+    else:
+        # Fall back to "Filer's Name" block which appears further down on the
+        # cover page. Skip any "Page N of M" garbage that poppler may insert.
+        for m in re.finditer(r"Filer'?s? Name\s*\n+\s*(\S[^\n]*)", text):
+            cand = m.group(1).strip()
+            if not re.search(r"\b[Pp]a[gq]e\b|\bof\b", cand):
+                result.member_name = cand
+                break
+
+    base_confidence = "low" if source == "ocr" else "medium"
+    # Less than 'high' because no ticker is extractable from the description
+    # and downstream resolution will add uncertainty.
+
+    transactions: list[ParsedTransaction] = []
+    for line in text.splitlines():
+        m = ANCHOR_RE_278T.match(line)
+        if not m:
+            continue
+        type_raw = re.sub(r"\s+", " ", m.group("type")).strip()
+        tx_type = TYPE_MAP_278T.get(type_raw, "unknown")
+        amount_min, amount_max = _parse_amount_278t(m.group("amt"))
+        confidence = base_confidence
+        if tx_type == "unknown":
+            confidence = "low"
+        if amount_min is None:
+            confidence = "low"
+
+        transactions.append(ParsedTransaction(
+            owner=None,
+            asset_name=m.group("desc").strip(),
+            ticker=None,
+            asset_type=None,
+            transaction_type=tx_type,
+            transaction_date=_parse_date(m.group("txdate")),
+            notification_date=None,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            amount_raw=m.group("amt").strip(),
+            confidence=confidence,
+            raw_text=line,
+        ))
+
+    result.transactions = transactions
+    return result
+
+
 # ── Public API ──────────────────────────────────────────────────────────────
 
 def parse_ptr_text(text: str, source: str = "digital") -> ParsedPTR:
-    """Parse already-extracted PTR text. `source` is 'digital' or 'ocr'."""
+    """Parse already-extracted PTR text. `source` is 'digital' or 'ocr'.
+    Auto-detects OGE Form 278-T (executive branch) vs House PTR and
+    dispatches to the appropriate parser."""
+    if _is_278t(text):
+        return parse_278t_text(text, source=source)
+
     result = ParsedPTR(parse_method=source)
 
     fid = re.search(r"Filing ID\s*#?\s*(\d+)", text)

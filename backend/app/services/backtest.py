@@ -30,9 +30,15 @@ BUCKET_THRESHOLD = 0.02                      # +/-2% excess return = "in-line"
 PRICE_BATCH = 50                             # tickers per Yahoo batch download
 SELL_TYPES = ("sale", "sale_partial")
 # Position role_types considered "leadership" for the leadership_only filter.
-# Includes formal chamber leadership (Speaker, Majority Leader, etc.) and,
-# once chair tenure is ingested in v2 step 3, committee chairs.
-LEADERSHIP_ROLE_TYPES = ("leadership", "chair")
+# Includes formal chamber leadership (Speaker, Majority Leader, etc.), once
+# chair tenure is ingested in v2 step 3, committee chairs, and (2026-05-23)
+# executive-branch cabinet posts tracked via OGE 278-T. Treating cabinet as
+# leadership extends Wei & Zhou's "influence + access" theory from
+# Congressional leadership to executive officials with comparable policy
+# authority; the trade-off is that historical leadership_only=True runs no
+# longer have an exact semantic equivalent (cabinet trades start showing up
+# automatically after the data lands). See docs/decision_log.md §6.3.
+LEADERSHIP_ROLE_TYPES = ("leadership", "chair", "executive_cabinet")
 
 # Owner-of-asset filter values for the owner_filter parameter. Maps to the
 # Transaction.owner column populated by the PTR parsers:

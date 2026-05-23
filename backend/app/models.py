@@ -9,6 +9,12 @@ from app.database import Base
 
 
 class Member(Base):
+    """A financial-disclosure filer. Originally exclusively congressional
+    members; expanded 2026-05-23 to include executive-branch PAS officials
+    (cabinet + senior sub-cabinet) who file OGE Form 278-T. Schema kept on
+    this table rather than splitting because every analysis path consumes
+    a single transaction-with-filer view; partitioning by `filer_type` is
+    enough to separate populations at query time."""
     __tablename__ = "members"
 
     id = Column(Integer, primary_key=True)
@@ -16,12 +22,18 @@ class Member(Base):
     first_name = Column(String, nullable=False)
     prefix = Column(String)
     suffix = Column(String)
-    state_dst = Column(String)  # House: "CA12" district; Senate: "CA" state
+    state_dst = Column(String)  # House: "CA12" district; Senate: "CA" state; NULL for executive
     party = Column(String)
-    chamber = Column(String)  # house | senate
+    chamber = Column(String)  # house | senate; NULL for executive
     # Canonical join key with external datasets (unitedstates/congress-legislators,
     # ProPublica, GovTrack). Populated by `backend/backfill_bioguide.py`.
+    # NULL for executive filers (different identifier regime).
     bioguide_id = Column(String, index=True)
+    # 'member' (congressional) | 'executive' (PAS / cabinet via OGE 278-T).
+    # Backfill in migrations.sql; default 'member' so existing call sites unchanged.
+    filer_type = Column(String, nullable=False, default="member", index=True)
+    # Executive position title — "Secretary of Treasury", etc. NULL for congressional.
+    position_title = Column(String)
 
     __table_args__ = (
         UniqueConstraint("last_name", "first_name", "state_dst", name="uq_member"),

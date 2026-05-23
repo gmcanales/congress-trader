@@ -30,3 +30,20 @@ ALTER TABLE user_holdings ADD COLUMN IF NOT EXISTS user_email TEXT;
 UPDATE user_holdings SET user_email = 'owner@example.com' WHERE user_email IS NULL;
 ALTER TABLE user_holdings ALTER COLUMN user_email SET NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_user_holdings_user_email ON user_holdings(user_email);
+
+-- OGE Form 278-T (executive branch / cabinet) ingest, 2026-05-23.
+-- `members` becomes a generic "filers" table — congressional members AND
+-- executive-branch PAS officials live in it. New rows: filer_type = 'executive'.
+-- Cabinet positions are stored in the existing `positions` table with
+-- role_type = 'executive_cabinet', and the backtest engine treats them as
+-- leadership (see backend/app/services/backtest.py LEADERSHIP_ROLE_TYPES).
+ALTER TABLE members ADD COLUMN IF NOT EXISTS filer_type TEXT NOT NULL DEFAULT 'member';
+ALTER TABLE members ADD COLUMN IF NOT EXISTS position_title TEXT;
+CREATE INDEX IF NOT EXISTS ix_members_filer_type ON members(filer_type);
+-- Existing rows pre-date this column; the DEFAULT handles new rows but
+-- explicit backfill keeps the value uniform regardless of DB engine quirks.
+UPDATE members SET filer_type = 'member' WHERE filer_type IS NULL OR filer_type = '';
+
+-- chamber and state_dst are NULL-OK for executive filers (they don't sit in
+-- either chamber and don't represent a district). Existing constraints already
+-- allow NULL — these statements are documentation, no schema change required.
