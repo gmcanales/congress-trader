@@ -72,9 +72,10 @@
   }
 
   const PROFILE_COLORS = {
-    conservative: '#58a6ff', // blue
-    moderate:     '#d6a936', // amber
-    aggressive:   '#bc8cff', // purple
+    conservative:   '#58a6ff', // blue
+    moderate:       '#d6a936', // amber
+    aggressive:     '#bc8cff', // purple
+    spouse_favored: '#3ed598', // teal-green (v2.5)
   };
 
   // ── Collapse button universal handler ──────────────────────────────────────

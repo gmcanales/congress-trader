@@ -73,7 +73,7 @@ NUC spec: **3.6 GB RAM / ~2.6 GB available, 2 GB swap, i5-1240P (12C/16T),
 NVMe SSD.** Headroom from: disabling `nodm` (~600 MB), disabling `nordvpnd`
 (~100 MB), adding 2 GB swapfile with `vm.swappiness=10`.
 
-Architecture and full migration history in [decision_log.md §7](docs/decision_log.md).
+Architecture and full migration history in [decision_log.md §8](docs/decision_log.md).
 
 ### Dev override (switching traffic to the dev box)
 
@@ -176,14 +176,8 @@ have no edge (matches our v1) but ~47pp/yr alpha for the 20 lawmakers who
 ascended into leadership. Scope and sequencing live in
 `docs/v2_leadership_plan.md`.
 
-Status:
-- **Step 1 done** — `members.bioguide_id` backfilled (311 / 313 matched
-  via `backend/backfill_bioguide.py`).
-- **Step 2 in progress** — committees / positions / party_control
-  ingestion from `unitedstates/congress-legislators`
-  (`backend/ingest_leadership.py`).
-- Step 3 → re-run the backtest restricted to trades made *during* a
-  leadership / chair tenure, on `filing_date`, with both SPY and RSP.
+Status: **v2 complete (null), v2.5 spouse-cut complete (suggestive).** See
+`docs/decision_log.md` §3-§5 for the full narrative.
 
 ## Key files
 
@@ -213,9 +207,9 @@ docker-compose.yml  .env
   positions table populated (37 chamber leadership + 120 committee
   chairs/rankings = 157 tenures), sector data ingested, Bayesian
   hierarchical model fitted.
-- 18 `AnalysisRun` rows catalogued (#1-#17 rules-backtests + #18
-  Bayesian hierarchical). Current canonical report:
-  `reports/report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-21.html`.
+- `AnalysisRun` rows catalogued through #60 (rules-backtests + 2 Bayesian
+  fits). Latest canonical report:
+  `reports/report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-22.html`.
 - **v2 finding:** Bayesian posterior on `leadership_at_trade` after
   controlling for member baseline, in-majority status, post-trifecta
   period, party, and sector: P(β > 0) = 0.58, 94% HDI [−2.1%, +2.5%].
@@ -224,6 +218,17 @@ docker-compose.yml  .env
   composition (energy long, cyclicals/materials/industrials short)
   mis-attributed because the leadership filter overlaps the trifecta
   window in our data.
+- **v2.5 finding (2026-05-23):** Stratifying by `owner` (filer vs.
+  spouse/joint) — the strongest non-sector signal so far, but still not
+  credible at 95%. Bayesian posterior on `is_spouse_owned` after the
+  same controls: P(β > 0) = 0.892, mean +1.11%, HDI [−0.61%, +2.85%].
+  Engine now supports `owner_filter ∈ (any, self, spouse_or_joint,
+  spouse_only, joint_only, dependent)`. Operationalized as the
+  `spouse_favored` recommendation profile. Also surfaced an important
+  methodological gotcha: for clustered-entry universes, the
+  rules-backtest NAV result and the per-trade event-study mean can
+  disagree by 8+ percentage points (rules can be inflated by sequencing,
+  not edge) — always report both.
 - Known data gap: ~12% scanned/checkbox-grid filings parse poorly
   (deferred).
 - App is publicly reachable at https://goosebase.org via Cloudflare Tunnel

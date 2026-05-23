@@ -8,7 +8,9 @@ Outcome
                `build_trade_dataset.build()`.
 
 Predictors (fixed effects)
-  leadership_at_trade      — THIS is the headline test
+  leadership_at_trade      — v2 headline test
+  is_spouse_owned          — v2.5 test: trade owner ∈ (SP, JT) — the filer's
+                              spouse has an interest in the asset
   in_majority              — member's party controls the chamber
   is_post_trifecta         — transaction_date ≥ 2025-01-03 (regime control)
   party_R                  — Republican (vs Democratic baseline)
@@ -92,6 +94,7 @@ def _prepare_design(df: pd.DataFrame, horizon: int) -> dict:
     # handled separately as a hierarchical random effect).
     X_parts = {
         "leadership_at_trade": df["leadership_at_trade"].astype(np.float32).values,
+        "is_spouse_owned":     df["is_spouse_owned"].astype(np.float32).values,
         "in_majority":         df["in_majority"].astype(np.float32).values,
         "is_post_trifecta":    df["is_post_trifecta"].astype(np.float32).values,
         "party_R":             (df["party"].astype(str) == "Republican").astype(np.float32).values,
@@ -209,14 +212,18 @@ def persist_run(params: dict, summary: dict) -> int:
             status="done",
             params=params,
             scores={
-                "p_leadership_gt_0": summary["beta"]["leadership_at_trade"]["p_gt_0"],
-                "leadership_mean":  summary["beta"]["leadership_at_trade"]["mean"],
-                "leadership_hdi_3":  summary["beta"]["leadership_at_trade"]["hdi_3"],
-                "leadership_hdi_97": summary["beta"]["leadership_at_trade"]["hdi_97"],
-                "in_majority_mean": summary["beta"]["in_majority"]["mean"],
-                "trifecta_mean":    summary["beta"]["is_post_trifecta"]["mean"],
-                "min_ess":          summary["diagnostics"]["min_ess_bulk"],
-                "max_rhat":         summary["diagnostics"]["max_rhat"],
+                "p_leadership_gt_0":  summary["beta"]["leadership_at_trade"]["p_gt_0"],
+                "leadership_mean":    summary["beta"]["leadership_at_trade"]["mean"],
+                "leadership_hdi_3":   summary["beta"]["leadership_at_trade"]["hdi_3"],
+                "leadership_hdi_97":  summary["beta"]["leadership_at_trade"]["hdi_97"],
+                "p_spouse_owned_gt_0": summary["beta"]["is_spouse_owned"]["p_gt_0"],
+                "spouse_owned_mean":   summary["beta"]["is_spouse_owned"]["mean"],
+                "spouse_owned_hdi_3":  summary["beta"]["is_spouse_owned"]["hdi_3"],
+                "spouse_owned_hdi_97": summary["beta"]["is_spouse_owned"]["hdi_97"],
+                "in_majority_mean":   summary["beta"]["in_majority"]["mean"],
+                "trifecta_mean":      summary["beta"]["is_post_trifecta"]["mean"],
+                "min_ess":            summary["diagnostics"]["min_ess_bulk"],
+                "max_rhat":           summary["diagnostics"]["max_rhat"],
             },
             full_results={"params": params, "summary": summary},
         )

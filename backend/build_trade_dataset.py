@@ -11,6 +11,7 @@ return at the chosen horizon, this emits a Parquet file with:
   leadership_at_trade   (bool — held leadership/chair at transaction_date)
   in_majority           (bool — member.party == chamber majority on tx date)
   is_post_trifecta      (bool — transaction_date >= 2025-01-03)
+  is_spouse_owned       (bool — owner in ('SP','JT'); the filer's spouse touched the trade)
   excess_63d_spy        (stock 63d forward return - SPY 63d forward return)
   excess_63d_sector     (stock 63d forward return - sector-ETF 63d forward return; NaN if no sector)
 
@@ -73,6 +74,7 @@ def build(start: date, end: date, horizon: int, output: Path) -> dict:
               vst.chamber, vst.party,
               vst.filing_date, vst.transaction_date,
               vst.ticker,
+              vst.owner,
               ti.sector,
               vst.in_leadership_window AS leadership_at_trade,
               vst.party_in_majority,
@@ -89,6 +91,7 @@ def build(start: date, end: date, horizon: int, output: Path) -> dict:
         df = pd.DataFrame(rows, columns=[
             "trade_id", "member_id", "bioguide_id", "last_name", "first_name",
             "chamber", "party", "filing_date", "transaction_date", "ticker",
+            "owner",
             "sector", "leadership_at_trade", "party_in_majority",
             "chamber_majority_party",
         ])
@@ -99,6 +102,10 @@ def build(start: date, end: date, horizon: int, output: Path) -> dict:
         df["is_post_trifecta"] = df["transaction_date"].apply(lambda d: d >= TRIFECTA_START)
         df["in_majority"] = df["party_in_majority"].fillna(False).astype(bool)
         df["leadership_at_trade"] = df["leadership_at_trade"].astype(bool)
+        # Spouse-touched bucket: SP-only and JT both indicate the spouse has
+        # an interest in the asset. The SP vs JT split is largely a household
+        # reporting convention; collapsing them gives a cleaner population.
+        df["is_spouse_owned"] = df["owner"].isin(("SP", "JT"))
 
         # Pull price history for every ticker + SPY + all sector ETFs we touched.
         tickers = set(df["ticker"].dropna().unique())
@@ -171,6 +178,7 @@ def build(start: date, end: date, horizon: int, output: Path) -> dict:
             "rows_with_sector": int(df[f"excess_{horizon}d_sector"].notna().sum()),
             "sector_distribution": df["sector"].value_counts(dropna=False).to_dict(),
             "post_trifecta_rows": int(df["is_post_trifecta"].sum()),
+            "spouse_owned_rows": int(df["is_spouse_owned"].sum()),
         }
         return summary
     finally:
@@ -196,6 +204,7 @@ def main() -> None:
     print(f"  leadership_at_trade=False : {summary['rankfile_rows']:>6}")
     print(f"  rows with sector data     : {summary['rows_with_sector']:>6}")
     print(f"  post-trifecta rows        : {summary['post_trifecta_rows']:>6}")
+    print(f"  is_spouse_owned rows      : {summary['spouse_owned_rows']:>6}")
     print(f"  dropped (no fwd return)   : {summary['dropped_no_fwd_return']:>6}")
     print(f"  sector distribution:")
     for sec, n in sorted(summary["sector_distribution"].items(), key=lambda x: -x[1]):

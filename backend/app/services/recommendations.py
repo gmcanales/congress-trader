@@ -32,18 +32,20 @@ from app.database import SessionLocal
 from app import models
 from app.services.backtest import (
     DEFAULT_BENCHMARK, SELL_TYPES, GICS_TO_ETF,
-    LEADERSHIP_ROLE_TYPES,
+    LEADERSHIP_ROLE_TYPES, OWNER_FILTERS,
     ensure_prices, _close_series, _compute_beta, _find_first_exit_idx,
+    _apply_owner_filter,
 )
 
 
-# When fetching the historical NAV for the three-profile comparison we
+# When fetching the historical NAV for the profile-comparison chart we
 # pull the most recent done AnalysisRun whose params satisfy this filter.
 # Kept here (not in RISK_PROFILES) because it's a *discovery* rule for
 # the backtest data, not a config knob of the strategy.
 PROFILE_RUN_FILTERS: dict[str, dict] = {
     "conservative": {
         "leadership_only": False,
+        "owner_filter": "any",
         "exit_policies": (
             "mirror_sell_with_beta_trailing_stop",
             "mirror_sell_with_trailing_stop",
@@ -51,6 +53,7 @@ PROFILE_RUN_FILTERS: dict[str, dict] = {
     },
     "moderate": {
         "leadership_only": True,
+        "owner_filter": "any",
         "exit_policies": (
             "mirror_sell_with_beta_trailing_stop",
             "mirror_sell_with_trailing_stop",
@@ -58,7 +61,21 @@ PROFILE_RUN_FILTERS: dict[str, dict] = {
     },
     "aggressive": {
         "leadership_only": True,
+        "owner_filter": "any",
         "exit_policies": ("mirror_sell",),
+    },
+    # v2.5 — operationalizes the Bayesian finding on `is_spouse_owned`
+    # (run #60: P(β > 0) = 0.89, mean +1.11% after controlling for
+    # leadership, sector, trifecta, party, in_majority). Backed by
+    # owner-cut rules backtests #55 (SPY) and #56 (RSP).
+    "spouse_favored": {
+        "leadership_only": False,
+        "owner_filter": "spouse_or_joint",
+        "exit_policies": (
+            "mirror_sell_with_beta_trailing_stop",
+            "mirror_sell_with_trailing_stop",
+            "fixed_horizon",  # #55/#56 are fixed_horizon — accept as fallback
+        ),
     },
 }
 
@@ -68,6 +85,7 @@ RISK_PROFILES: dict[str, dict] = {
         "label": "Conservative",
         "description": "Broad universe, beta-scaled risk control.",
         "universe": "all",
+        "owner_filter": "any",
         "exit_policy": "mirror_sell_with_beta_trailing_stop",
         "trailing_stop_pct": 0.15,
         "time_stop_days": 252,
@@ -77,6 +95,7 @@ RISK_PROFILES: dict[str, dict] = {
         "label": "Moderate",
         "description": "Leadership universe, beta-scaled risk control.",
         "universe": "leadership",
+        "owner_filter": "any",
         "exit_policy": "mirror_sell_with_beta_trailing_stop",
         "trailing_stop_pct": 0.15,
         "time_stop_days": 252,
@@ -87,8 +106,25 @@ RISK_PROFILES: dict[str, dict] = {
         "description": "Leadership universe, no trailing stop. Highest historical "
                        "OOS excess but no intra-position drawdown protection.",
         "universe": "leadership",
+        "owner_filter": "any",
         "exit_policy": "mirror_sell",
         "trailing_stop_pct": 0.0,
+        "time_stop_days": 252,
+        "new_window_days": 14,
+    },
+    # v2.5 — see `docs/decision_log.md §5.8`. The Bayesian model puts
+    # `is_spouse_owned` at P(β > 0) = 0.89 (strongest non-sector signal,
+    # not credible at 95% but defensible if you take the posterior
+    # probability seriously). Universe = trades where owner ∈ ('SP', 'JT').
+    "spouse_favored": {
+        "label": "Spouse-favored",
+        "description": "Owner is spouse or joint. v2.5 Bayesian finding: "
+                       "P(β > 0) = 0.89 on `is_spouse_owned` after sector/"
+                       "leadership/trifecta controls. Beta-stop exit.",
+        "universe": "all",
+        "owner_filter": "spouse_or_joint",
+        "exit_policy": "mirror_sell_with_beta_trailing_stop",
+        "trailing_stop_pct": 0.15,
         "time_stop_days": 252,
         "new_window_days": 14,
     },
@@ -126,6 +162,7 @@ def list_risk_profiles() -> list[dict]:
             "key": key, "label": prof["label"],
             "description": prof["description"],
             "universe": prof["universe"],
+            "owner_filter": prof.get("owner_filter", "any"),
             "exit_policy": prof["exit_policy"],
             "trailing_stop_pct": prof["trailing_stop_pct"],
             "time_stop_days": prof["time_stop_days"],
@@ -156,6 +193,9 @@ def compute_recommendations(as_of: date,
     """
     cfg = _resolve_profile(risk_profile, overrides)
     leadership_only = cfg["universe"] == "leadership"
+    owner_filter = cfg.get("owner_filter", "any")
+    if owner_filter not in OWNER_FILTERS:
+        raise ValueError(f"unknown owner_filter: {owner_filter!r}")
     exit_policy = cfg["exit_policy"]
     trailing_stop_pct = cfg["trailing_stop_pct"]
     time_stop_days = cfg["time_stop_days"]
@@ -198,6 +238,7 @@ def compute_recommendations(as_of: date,
                 .exists()
             )
             eq = eq.filter(leadership_filter)
+        eq = _apply_owner_filter(eq, owner_filter)
         entries = eq.order_by(models.Transaction.filing_date).all()
 
         # All sales by relevant members on those tickers, up to AND including
@@ -206,7 +247,7 @@ def compute_recommendations(as_of: date,
         tickers = list({e.ticker for e in entries})
         sales_by_key: dict[tuple, list[date]] = {}
         if member_ids and tickers:
-            sales = (db.query(
+            sq = db.query(
                 models.Transaction.ticker,
                 models.Transaction.filing_date,
                 models.Transaction.member_id,
@@ -216,8 +257,11 @@ def compute_recommendations(as_of: date,
                 models.Transaction.filing_date.isnot(None),
                 models.Transaction.filing_date <= as_of,
                 models.Transaction.transaction_type.in_(SELL_TYPES),
-            ).all())
-            for s_ticker, s_date, s_member in sales:
+            )
+            # Mirror exits should match owner class: a spouse-buy strategy
+            # exits when the spouse sells, not when the member sells.
+            sq = _apply_owner_filter(sq, owner_filter)
+            for s_ticker, s_date, s_member in sq.all():
                 sales_by_key.setdefault((s_member, s_ticker), []).append(s_date)
 
         # Price data: tickers + SPY for beta. Fetch from a bit before lookback
@@ -365,6 +409,7 @@ def compute_recommendations(as_of: date,
             "risk_profile": risk_profile,
             "strategy_config": {
                 "universe": cfg["universe"],
+                "owner_filter": owner_filter,
                 "exit_policy": exit_policy,
                 "trailing_stop_pct": trailing_stop_pct,
                 "time_stop_days": time_stop_days,
@@ -399,6 +444,8 @@ def _find_run_for_profile(db, profile_key: str) -> models.AnalysisRun | None:
         params = r.params or {}
         leadership_only = bool(scores.get("leadership_only",
                                           params.get("leadership_only", False)))
+        owner_filter = scores.get("owner_filter",
+                                   params.get("owner_filter", "any"))
         exit_policy = scores.get("exit_policy",
                                   params.get("exit_policy", "fixed_horizon"))
         # filing_date only; transaction_date is diagnostic
@@ -407,6 +454,8 @@ def _find_run_for_profile(db, profile_key: str) -> models.AnalysisRun | None:
         if date_field != "filing_date":
             continue
         if leadership_only != flt["leadership_only"]:
+            continue
+        if owner_filter != flt.get("owner_filter", "any"):
             continue
         if exit_policy not in flt["exit_policies"]:
             continue
@@ -489,6 +538,7 @@ def get_strategy_comparison(band_k: float = 1.0,
                     "oos_excess": scores.get("oos_excess"),
                     "exit_policy": scores.get("exit_policy"),
                     "leadership_only": scores.get("leadership_only"),
+                    "owner_filter": scores.get("owner_filter", "any"),
                     "benchmark": scores.get("benchmark"),
                 },
             })

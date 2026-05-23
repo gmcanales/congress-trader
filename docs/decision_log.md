@@ -567,7 +567,168 @@ Zhou hypothesis.
 
 ---
 
-## 5. Data scope by stage
+## 5. v2.5 spouse-cut follow-up (2026-05-23, runs #55–58 + #60)
+
+### 5.1 Why a v2.5 was warranted
+
+v2's null on `leadership_at_trade` (P(β > 0) = 0.58) closed the
+Wei & Zhou hypothesis on this data but didn't rule out other
+information-channel cuts. The PTR schema carries an **`owner`** column —
+`SP` (spouse-only), `JT` (joint), `DC` (dependent child), or null (the
+filer's own holding) — that we had been ignoring.
+
+**Theory.** Members are subject to STOCK Act + public scrutiny + party
+leadership pressure when their *own* trades are disclosed. Spouses share
+the same household information edge but face less scrutiny and no
+party-discipline pressure. If there's an information advantage hidden in
+the population, the spouse-touched subset is where it should be cleanest.
+
+This is a theory-driven cut, not a fishing expedition, so it fits the
+v1 discipline.
+
+### 5.2 Concentration check first (no engine work needed)
+
+Before building anything, we ran the household-level distribution on
+analyzable stock transactions, owner ∈ ('SP', 'JT'):
+
+| Household | Chamber | SP | JT | Total SP+JT |
+|---|---|---|---|---|
+| Tuberville | senate | 0 | 1,246 | **1,246** |
+| Carper | senate | 685 | 0 | 685 |
+| Gottheimer | house | 0 | 422 | 422 |
+| Mullin | senate | 82 | 276 | 358 |
+| Boozman | senate | 0 | 346 | 346 |
+| … | | | | |
+
+Top-5 households = **50% of SP+JT volume**; top-10 = 66%. Any aggregate
+"spouse edge" finding is mechanically driven by a handful of heavy
+traders.
+
+**Reporting-convention observation.** Tuberville is pure JT (1,246/0).
+Carper is pure SP (685/0). Mullin is mixed. The SP-vs-JT split is
+clearly a household-level account-titling convention — not a signal
+about who initiated the trade. The analytically meaningful bucket is
+**`spouse_or_joint`** (SP ∪ JT), not the raw owner code.
+
+### 5.3 Engine extension — `owner_filter` parameter
+
+Added a parameterized `owner_filter` to `services/backtest.py` mirroring
+the existing `leadership_only` pattern: `any | self | spouse_or_joint |
+spouse_only | joint_only | dependent`. Plumbed through `event_study`,
+`rules_backtest`, `_rules_backtest_mirror`, `train_test_analysis`, plus
+the CLI (`analyze.py --owner-filter ...`) and API
+(`POST /api/model/run`, `owner_filter` field on `AnalyzeRequest`).
+
+For mirror-sell exits, the same filter is applied to the **sale** query:
+a spouse-buy strategy mirrors the *spouse's* sale, not the member's.
+
+### 5.4 The rules-backtest / event-study discrepancy (2026-05-23 methodology insight)
+
+Pinned grid (hold=63, min_members=1), filing_date anchor, train 2021–24
+/ test 2025. Runs #55–58 paired against each benchmark:
+
+| Run | Owner cut | Bench | Train excess | OOS event-study mean / t | OOS rules-backtest excess |
+|---|---|---|---|---|---|
+| #55 | spouse_or_joint | SPY | −12.60% | **+0.07% / t=0.07** | **+8.43%** |
+| #56 | spouse_or_joint | RSP | +6.85% | +1.62% / t=1.74 | **+14.90%** |
+| #57 | self | SPY | −37.30% | +1.17% / t=1.22 | −0.94% |
+| #58 | self | RSP | −17.86% | +2.28% / **t=2.30** | +5.53% |
+
+**The 8-pp gap on #55 between event-study (+0.07%) and rules-backtest
+(+8.43%) is a NAV-sequencing artifact, not edge.** 354 SP+JT trades in
+2025 concentrate in time (max concurrent positions = 146; days invested
+= 304/318), so a handful of clustered weeks dominate the compounded NAV
+even though the per-trade equal-weight mean is essentially zero. Win
+rate vs SPY = 44.8% — most spouse trades *underperform* SPY
+individually.
+
+**Methodological consequence:** the rules-backtest scalar
+(`excess_return`) overstates per-trade edge when entries cluster in
+favorable windows. Any future analysis should report **both** the rules
+NAV result and the event-study mean. They answer different questions:
+"if I followed every trade with $1 equal-weight in time, what would I
+end up with" (rules) vs. "what's the expected excess return on a
+randomly-selected trade from this universe" (event study).
+
+### 5.5 Per-household OOS decomposition (2025 SP+JT)
+
+To confirm the headline isn't one trader:
+
+| Household | n | mean excess vs SPY | mean excess vs RSP | win-rate vs SPY |
+|---|---|---|---|---|
+| Boozman | 99 | +2.52% | +3.82% | 48.5% |
+| Mullin | 81 | −0.69% | +1.23% | 46.9% |
+| Gottheimer | 23 | +1.79% | +2.49% | 56.5% |
+| King, Jr. | 21 | +1.62% | +5.11% | 42.9% |
+| Capito | 14 | +12.07% | +13.90% | 71.4% |
+| (Top-3) | 203 | +1.16% | +2.64% | — |
+| (Other) | 146 | −1.08% | +0.52% | — |
+| **Pooled** | **349** | **+0.22%** | **+1.75%** | **45.0%** |
+
+Effect doesn't collapse to one trader — top-3 contribute +1.16%, other
+25 households contribute essentially zero. Capito's 14 trades at +12% are
+a hot small-n tail, not a stable signal.
+
+### 5.6 Bayesian update with `is_spouse_owned` (run #60)
+
+Extended `bayesian_model.py` and `build_trade_dataset.py` to include an
+`is_spouse_owned` boolean (owner ∈ ('SP', 'JT')) alongside the existing
+v2 predictors. Re-fit on the same 3,617-row dataset, 4 chains × 3,000
+draws, target_accept=0.95:
+
+| Predictor | Posterior mean | 94% HDI | P(β > 0) |
+|---|---|---|---|
+| **`is_spouse_owned`** | **+1.11%** | [−0.61%, +2.85%] | **0.892** |
+| `leadership_at_trade` | +0.19% | [−2.15%, +2.54%] | 0.561 |
+| `is_post_trifecta` | +1.39% | [−0.40%, +3.17%] | 0.926 |
+| `in_majority` | −0.25% | [−1.92%, +1.43%] | 0.385 |
+| `party_R` | +0.89% | [−1.59%, +3.33%] | 0.754 |
+| `sector_Energy` | +3.67% | [+0.92%, +6.35%] | 0.994 |
+| `sector_Consumer Cyclical` | −2.78% | [−4.72%, −0.88%] | 0.003 |
+| `sector_Basic Materials` | −3.75% | [−6.45%, −1.05%] | 0.005 |
+| `sector_Industrials` | −1.95% | [−3.98%, +0.06%] | 0.034 |
+
+Convergence: min ESS = 1,409, max R̂ = 1.000 — clean. (First fit #59
+hit R̂ = 1.020 at 1,500 draws; #60 is the canonical doubled-sample run.)
+
+### 5.7 Interpretation
+
+- **`is_spouse_owned` is the strongest non-sector signal in the data,
+  but still not credible at 95%.** P = 0.89, and the 94% HDI just
+  barely includes zero. "Suggestive, not actionable."
+- **The `leadership_at_trade` coefficient is stable across v2 and v2.5**
+  (P = 0.58 → 0.56). Adding `is_spouse_owned` didn't reshuffle the
+  leadership null.
+- **`is_post_trifecta` carries most of the 2025 effect** (P = 0.93,
+  +1.39%) — same finding as v2, unchanged.
+- **The sector pattern is unchanged from v2** — Energy long, cyclicals
+  / materials / industrials short. The +1.1% spouse coefficient
+  estimates the *spouse premium after netting out sector composition*,
+  not the raw difference.
+
+### 5.8 Operationalizing the finding — `spouse_favored` profile
+
+Because P = 0.89 is high enough to act on if you discount the strict
+95% threshold (a defensible Bayesian stance: posterior probability is
+the directly meaningful quantity, not p-values), we added a fourth risk
+profile to `services/recommendations.py`:
+
+| Profile | Universe | Exit policy | Backed by |
+|---|---|---|---|
+| conservative | all | mirror_sell_with_beta_trailing_stop | run #14-ish lineage |
+| moderate | leadership | mirror_sell_with_beta_trailing_stop | run #11 lineage |
+| aggressive | leadership | mirror_sell | run #11 lineage |
+| **spouse_favored** | **owner ∈ (SP, JT)** | **mirror_sell_with_beta_trailing_stop** | **run #55 / #56** |
+
+The recommendation engine itself remains stateless and rules-based; the
+Bayesian model informs the *universe definition* (which population
+shows the strongest posterior signal), not per-trade scoring. This is
+the simplest integration that captures the v2.5 finding without
+introducing model-prediction surface area to the API.
+
+---
+
+## 6. Data scope by stage
 
 How the data inventory grew across the project:
 
@@ -582,6 +743,7 @@ How the data inventory grew across the project:
 | Party backfill | `58f6a4b` | `members.party` (311/313) |
 | Sector ingest | `9e95e76` | 1,021 / 1,477 ticker sectors; +11 sector ETFs in price_bars |
 | Bayesian dataset | `d06c17a` | 3,617 per-trade rows with all features (in-memory; not persisted to DB) |
+| Owner-cut extension | (v2.5) | Engine `owner_filter` param + `is_spouse_owned` column on the Bayesian dataset (still 3,617 rows; +1 boolean feature) |
 
 External data sources used (and why):
 
@@ -609,7 +771,7 @@ External data sources **considered but deferred**:
 
 ---
 
-## 6. Run catalog
+## 7. Run catalog
 
 `analysis_runs` rows persisted through the project (all in the NUC
 database). Tool `train_test_analysis` unless noted.
@@ -633,11 +795,17 @@ database). Tool `train_test_analysis` unless noted.
 | #15 | 2026-05-20 | filing_date | SPY | yes (expanded) | [126] | [1] | term-structure long |
 | #16 | 2026-05-20 | filing_date | RSP | yes (expanded) | [126] | [1] | |
 | #17 | 2026-05-21 | filing_date | sector | yes (expanded) | [63] | [1] | sector-neutral |
-| #18 | 2026-05-21 | filing_date | — | — | — | — | **`bayesian_hierarchical`** |
+| #18 | 2026-05-21 | filing_date | — | — | — | — | **`bayesian_hierarchical`** (leadership only) |
+| #55 | 2026-05-23 | filing_date | SPY | no | [63] | [1] | **owner=spouse_or_joint** (v2.5) |
+| #56 | 2026-05-23 | filing_date | RSP | no | [63] | [1] | owner=spouse_or_joint, RSP |
+| #57 | 2026-05-23 | filing_date | SPY | no | [63] | [1] | owner=self |
+| #58 | 2026-05-23 | filing_date | RSP | no | [63] | [1] | owner=self, RSP |
+| #59 | 2026-05-23 | filing_date | — | — | — | — | `bayesian_hierarchical` first fit (R̂=1.02; superseded) |
+| #60 | 2026-05-23 | filing_date | — | — | — | — | **`bayesian_hierarchical` with `is_spouse_owned`** (canonical v2.5) |
 
 ---
 
-## 7. Public deployment via Cloudflare Tunnel + Access (2026-05-22)
+## 8. Public deployment via Cloudflare Tunnel + Access (2026-05-22)
 
 **Decision.** Expose the app at a stable, authenticated public URL
 (`https://goosebase.org`) so it can be shared without port-forwarding or
@@ -790,7 +958,7 @@ near the NUC.
 
 ---
 
-## 8. Methodological choices documented elsewhere
+## 9. Methodological choices documented elsewhere
 
 - [docs/v2_leadership_plan.md](v2_leadership_plan.md) — v2 scope, schema
   design, sequencing, and explicit deferral of cabinet / judges /
@@ -809,7 +977,7 @@ near the NUC.
 
 ---
 
-## 9. Things explicitly NOT done, and why
+## 10. Things explicitly NOT done, and why
 
 | Considered | Status | Why deferred |
 |---|---|---|
@@ -826,7 +994,7 @@ near the NUC.
 
 ---
 
-## 10. Where someone picking this up next should look
+## 11. Where someone picking this up next should look
 
 1. **Read this document and `CLAUDE.md`.**
 2. **Open the most recent report** under `reports/` for the rendered

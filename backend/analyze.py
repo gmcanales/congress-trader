@@ -68,6 +68,9 @@ def main() -> None:
                    help="restrict to trades made while the member held a leadership/chair position")
     p.add_argument("--benchmark-mode", choices=["ticker", "sector"], default="ticker",
                    help="ticker: excess vs the single --benchmark; sector: excess vs each stock's GICS sector ETF")
+    p.add_argument("--owner-filter",
+                   choices=list(backtest.OWNER_FILTERS), default="any",
+                   help="restrict by who held the asset: any | self | spouse_or_joint | spouse_only | joint_only | dependent")
     p.add_argument("--output", help="path to write the full result JSON")
     args = p.parse_args()
 
@@ -76,7 +79,8 @@ def main() -> None:
                   for h, m in itertools.product(args.hold_days, args.min_members)]
 
     print(f"Analysis  anchor={args.date_field}  benchmark={args.benchmark}"
-          f"  bench_mode={args.benchmark_mode}  leadership_only={args.leadership_only}")
+          f"  bench_mode={args.benchmark_mode}  leadership_only={args.leadership_only}"
+          f"  owner_filter={args.owner_filter}")
     print(f"  train {args.train_start}..{args.train_end}"
           f"  |  test {args.test_start}..{args.test_end}")
     print(f"  grid: {len(param_grid)} configs  |  event horizons: {args.event_horizons}")
@@ -86,6 +90,7 @@ def main() -> None:
         date_field=args.date_field, param_grid=param_grid, horizons=horizons,
         benchmark=args.benchmark, leadership_only=args.leadership_only,
         benchmark_mode=args.benchmark_mode,
+        owner_filter=args.owner_filter,
     )
 
     _print_event_study(result["event_study"]["train"], "TRAIN")

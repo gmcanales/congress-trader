@@ -34,6 +34,36 @@ SELL_TYPES = ("sale", "sale_partial")
 # once chair tenure is ingested in v2 step 3, committee chairs.
 LEADERSHIP_ROLE_TYPES = ("leadership", "chair")
 
+# Owner-of-asset filter values for the owner_filter parameter. Maps to the
+# Transaction.owner column populated by the PTR parsers:
+#   None → "self" (filer's own holding)   SP → spouse-only
+#   JT   → joint (member + spouse)        DC → dependent child
+# The JT vs SP split is largely a household reporting convention (how the
+# household titles its accounts), not a clean signal about who initiated the
+# trade — so the analytical bucket of interest is "spouse_or_joint".
+OWNER_FILTERS = ("any", "self", "spouse_or_joint", "spouse_only",
+                 "joint_only", "dependent")
+
+
+def _apply_owner_filter(q, owner_filter: str):
+    """Apply the owner_filter clause to a SQLAlchemy query over Transaction.
+    `owner_filter` must be one of OWNER_FILTERS; raises ValueError otherwise.
+    `any` is a no-op."""
+    t = models.Transaction
+    if owner_filter == "any":
+        return q
+    if owner_filter == "self":
+        return q.filter(t.owner.is_(None))
+    if owner_filter == "spouse_or_joint":
+        return q.filter(t.owner.in_(("SP", "JT")))
+    if owner_filter == "spouse_only":
+        return q.filter(t.owner == "SP")
+    if owner_filter == "joint_only":
+        return q.filter(t.owner == "JT")
+    if owner_filter == "dependent":
+        return q.filter(t.owner == "DC")
+    raise ValueError(f"unknown owner_filter: {owner_filter!r} (expected one of {OWNER_FILTERS})")
+
 # GICS top-level sector → SPDR sector ETF used for sector-neutral excess return.
 # These are the well-known SPDR sector funds that closely track GICS sectors.
 GICS_TO_ETF = {
@@ -224,7 +254,8 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
                 horizons: dict | None = None,
                 benchmark: str = DEFAULT_BENCHMARK,
                 leadership_only: bool = False,
-                benchmark_mode: str = "ticker") -> dict:
+                benchmark_mode: str = "ticker",
+                owner_filter: str = "any") -> dict:
     """Mean excess return after congressional buys vs sells, by horizon & chamber.
 
     `date_field` chooses the event anchor: 'filing_date' (the public date — for
@@ -233,6 +264,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
     cap-weighted; RSP is the equal-weight S&P 500 alternative).
     `leadership_only` restricts events to trades made while the member held
     a leadership or committee-chair position (theory-driven cut per Wei & Zhou).
+    `owner_filter` restricts events by who held the asset (see OWNER_FILTERS).
     `benchmark_mode`:
       'ticker'  (default) — excess vs the single `benchmark` ticker (SPY/RSP)
       'sector'            — excess vs the stock's GICS sector SPDR ETF
@@ -261,6 +293,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
         )
         if leadership_only:
             q = q.filter(_leadership_exists_filter())
+        q = _apply_owner_filter(q, owner_filter)
         rows = q.all()
         tickers = {r.ticker for r in rows}
 
@@ -330,6 +363,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             "benchmark": benchmark,
             "benchmark_mode": benchmark_mode,
             "leadership_only": leadership_only,
+            "owner_filter": owner_filter,
             "events_total": len(rows),
             "events_missing_price": missing_price,
             "events_missing_sector": missing_sector,
@@ -348,7 +382,8 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                    benchmark_mode: str = "ticker",
                    exit_policy: str = "fixed_horizon",
                    trailing_stop_pct: float = 0.15,
-                   time_stop_days: int = 252) -> dict:
+                   time_stop_days: int = 252,
+                   owner_filter: str = "any") -> dict:
     """Simulate an equal-weight 'follow the buys' portfolio vs a benchmark.
 
     Each qualifying purchase opens a position the trading day after its event
@@ -397,6 +432,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             time_stop_days=time_stop_days,
             exit_policy=exit_policy,
             trailing_stop_mode=MIRROR_POLICIES[exit_policy],
+            owner_filter=owner_filter,
         )
     elif exit_policy != "fixed_horizon":
         return {"error": f"unknown exit_policy: {exit_policy!r}"}
@@ -420,6 +456,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
         )
         if leadership_only:
             q = q.filter(_leadership_exists_filter())
+        q = _apply_owner_filter(q, owner_filter)
         rows = q.order_by(date_col).all()
         tickers = {r.ticker for r in rows}
 
@@ -520,6 +557,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                        "date_field": date_field, "benchmark": benchmark,
                        "benchmark_mode": benchmark_mode,
                        "leadership_only": leadership_only,
+                       "owner_filter": owner_filter,
                        "exit_policy": "fixed_horizon"},
             "positions_opened": positions,
             "events_skipped_no_sector": skipped_no_sector,
@@ -595,7 +633,8 @@ def _rules_backtest_mirror(start: date, end: date, *,
                             trailing_stop_pct: float,
                             time_stop_days: int,
                             exit_policy: str,
-                            trailing_stop_mode: str) -> dict:
+                            trailing_stop_mode: str,
+                            owner_filter: str = "any") -> dict:
     """Per-(member, ticker, entry) position simulator with signal-driven
     exits. See `rules_backtest` for the public interface and the precise
     exit-priority semantics."""
@@ -619,6 +658,7 @@ def _rules_backtest_mirror(start: date, end: date, *,
             ))
         if leadership_only:
             eq = eq.filter(_leadership_exists_filter())
+        eq = _apply_owner_filter(eq, owner_filter)
         entries = eq.order_by(date_col).all()
 
         # Sales: every sale we might need to mirror — by any member who
@@ -629,7 +669,7 @@ def _rules_backtest_mirror(start: date, end: date, *,
         tickers = list({r.ticker for r in entries})
         sales_rows = []
         if member_ids and tickers:
-            sales_rows = (db.query(
+            sq = (db.query(
                     models.Transaction.ticker,
                     date_col,
                     models.Transaction.member_id,
@@ -639,8 +679,11 @@ def _rules_backtest_mirror(start: date, end: date, *,
                     models.Transaction.ticker.in_(tickers),
                     date_col.isnot(None),
                     models.Transaction.transaction_type.in_(SELL_TYPES),
-                )
-                .order_by(date_col).all())
+                ))
+            # Mirror-sell on a same-owner-class sale: a spouse-buy strategy
+            # should exit when the spouse sells, not when the member sells.
+            sq = _apply_owner_filter(sq, owner_filter)
+            sales_rows = sq.order_by(date_col).all()
 
         # Build a lookup: (member_id, ticker) -> sorted list of sale dates.
         sales_by_key: dict[tuple, list[date]] = {}
@@ -840,6 +883,7 @@ def _rules_backtest_mirror(start: date, end: date, *,
                 "min_members": min_members, "date_field": date_field,
                 "benchmark": benchmark, "benchmark_mode": benchmark_mode,
                 "leadership_only": leadership_only,
+                "owner_filter": owner_filter,
                 "exit_policy": exit_policy,
                 "trailing_stop_mode": trailing_stop_mode,
                 "trailing_stop_pct": trailing_stop_pct,
@@ -888,17 +932,22 @@ def train_test_analysis(train_start: date, train_end: date,
                         benchmark_mode: str = "ticker",
                         exit_policy: str = "fixed_horizon",
                         trailing_stop_pct: float = 0.15,
-                        time_stop_days: int = 252) -> dict:
+                        time_stop_days: int = 252,
+                        owner_filter: str = "any") -> dict:
     """Grid-search the strategy on the training years, then evaluate the single
     best configuration once on the held-out test year. The test period is
     touched exactly once, with parameters locked from training."""
+    if owner_filter not in OWNER_FILTERS:
+        raise ValueError(f"unknown owner_filter: {owner_filter!r} (expected one of {OWNER_FILTERS})")
     param_grid = param_grid or PARAM_GRID
     es_train = event_study(train_start, train_end, date_field, horizons,
                            benchmark=benchmark, leadership_only=leadership_only,
-                           benchmark_mode=benchmark_mode)
+                           benchmark_mode=benchmark_mode,
+                           owner_filter=owner_filter)
     es_test = event_study(test_start, test_end, date_field, horizons,
                           benchmark=benchmark, leadership_only=leadership_only,
-                          benchmark_mode=benchmark_mode)
+                          benchmark_mode=benchmark_mode,
+                          owner_filter=owner_filter)
 
     grid = []
     for params in param_grid:
@@ -911,6 +960,7 @@ def train_test_analysis(train_start: date, train_end: date,
                                               exit_policy=exit_policy,
                                               trailing_stop_pct=trailing_stop_pct,
                                               time_stop_days=time_stop_days,
+                                              owner_filter=owner_filter,
                                               **params)})
 
     best = max(grid, key=lambda g: g["result"].get("excess_return", -1e9))
@@ -923,6 +973,7 @@ def train_test_analysis(train_start: date, train_end: date,
                                    exit_policy=exit_policy,
                                    trailing_stop_pct=trailing_stop_pct,
                                    time_stop_days=time_stop_days,
+                                   owner_filter=owner_filter,
                                    **best["params"])
 
     # strip NAV curves from the grid comparison to keep the payload small
@@ -937,6 +988,7 @@ def train_test_analysis(train_start: date, train_end: date,
         "benchmark": benchmark,
         "benchmark_mode": benchmark_mode,
         "leadership_only": leadership_only,
+        "owner_filter": owner_filter,
         "exit_policy": exit_policy,
         "trailing_stop_pct": trailing_stop_pct,
         "time_stop_days": time_stop_days,

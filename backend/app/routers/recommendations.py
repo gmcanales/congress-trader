@@ -97,7 +97,7 @@ def get_recommendations(
     as_of: Optional[date] = Query(None,
         description="YYYY-MM-DD. Defaults to today."),
     risk_profile: str = Query("conservative",
-        description="One of: conservative | moderate | aggressive."),
+        description="One of: conservative | moderate | aggressive | spouse_favored."),
     new_window_days: Optional[int] = Query(None,
         description="Override how many days back count as 'open today'."),
     trailing_stop_pct: Optional[float] = Query(None,
