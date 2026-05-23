@@ -194,6 +194,8 @@ backend/backfill_bioguide.py   one-shot: backfill bioguide_id from congress-legi
 backend/ingest_leadership.py   one-shot: ingest committees/positions/party_control
 frontend/js/{app,chart,analysis,api}.js
 docs/v2_leadership_plan.md     v2 scope, schema, data sources
+docs/international_disclosure_regimes.md  region-by-region survey of ~25 international parliamentary disclosure regimes; conclusion: US STOCK Act shape is essentially unique
+docs/us_state_disclosure_regimes.md       50-state survey of legislator disclosure regimes; conclusion: same annual-snapshot problem as international, plus 50× engineering surface. Surfaces congressional senior-staff PTRs as the cheaper internal expansion.
 reports/                       generated HTML reports (report_runs<ids>_<date>.html)
 docker-compose.yml  .env
 ```

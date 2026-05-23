@@ -768,6 +768,110 @@ External data sources **considered but deferred**:
   into the existing engine. But all cabinet officials turned over at the
   2025-01-03 trifecta change, so it has the same cohort-confound problem
   as congress. Deferred.
+- **International parliamentarian disclosures (2026-05-23 survey).**
+  Comprehensive ~25-jurisdiction scoping confirmed the US STOCK Act
+  regime is essentially unique: **no other major democracy publishes
+  per-trade events with values via a bulk feed.** Best non-US data
+  infrastructure is France's HATVP (XML/CSV on data.gouv.fr) and the UK
+  Commons via mySociety, but both publish annual holdings declarations,
+  not per-trade events — wrong shape for the existing engine. Full
+  region-by-region survey, comparison table, and engineering
+  implications in [`docs/international_disclosure_regimes.md`](international_disclosure_regimes.md).
+  Verdict: international ingest deferred indefinitely; the policy-event
+  approach below is the lower-cost / higher-signal next pivot.
+- **US state-level disclosures (2026-05-23 survey).** Same exercise on
+  the 50 US states + DC. Verdict: **no state has a STOCK Act analog**;
+  all state regimes are annual snapshots filed with state ethics
+  commissions, with the SWAMP Index "top performers" leading on
+  *governance* (ethics enforcement, gift rules) rather than on
+  event-driven data shape. California adds a unique jurisdiction-scoping
+  problem (Form 700 only requires disclosure of CA-business-relevant
+  holdings). 50-jurisdiction engineering surface for the same wrong
+  data shape = strictly worse than the international option. Full
+  survey in [`docs/us_state_disclosure_regimes.md`](us_state_disclosure_regimes.md).
+  **The state-level scoping did surface a higher-leverage internal
+  alternative: congressional senior staff PTRs** (~2,000 covered
+  individuals, same House Clerk + Senate eFD filing system we already
+  scrape, same engine compatibility, ~5× dataset expansion). See §6.2
+  below.
+
+### 6.2 Congressional senior staff PTRs (roadmap, candidate)
+
+**Why.** Surfaced during the 2026-05-23 state-level scoping
+(documented in `docs/us_state_disclosure_regimes.md` §8). STOCK Act
+covers senior congressional staff (anyone earning ≥120% of GS-15 base,
+roughly $170k), capturing committee staff directors, leadership
+office staff, and senior personal-office staff — approximately 2,000
+covered individuals across both chambers. They file PTRs through the
+**same House Clerk and Senate eFD systems we already scrape** for
+member filings. Same shape, same value brackets, same 30/45-day rule,
+same filing infrastructure.
+
+**Why this is the highest-ratio internal expansion.**
+- ~5× dataset growth using infrastructure already built. The existing
+  scrapers (`backend/app/services/scraper.py`, `senate_scraper.py`)
+  currently filter to member filings only; plumbing staff filings is
+  a small extension, not a new ingest pipeline.
+- Different selection. Senior staff have policy-information access
+  without the public-figure scrutiny that may shape member trading
+  behavior. Whether the v1/v2/v2.5 nulls replicate on this
+  less-scrutinized population is a clean fresh test.
+- No methodology change. The engine, the schema, the analysis scripts
+  all work unchanged.
+
+**Status.** Roadmapped, not started. Complementary to §6.1
+(policy-event windows) rather than alternative.
+
+**Engine change required.** Small. New `is_staff` boolean column on
+`members` (or a `filer_type` enum if we want to be more expressive),
+backfilled to `False` for current US Congress members. New ingest
+pass over the same scraper sources filtering on staff-filer flag.
+
+**What this does NOT do.** It doesn't add a new theoretical primitive
+either — it's still the same population shape, just larger. If the
+v1/v2/v2.5 nulls *also* hold on senior staff, that's strong
+confirmation that the broad PTR universe has no edge to find.
+
+### 6.1 Policy-event windows (roadmap, on deck)
+
+**Why.** Wei & Zhou's information-channel hypothesis predicts the
+largest informational edge precisely *around* discrete policy events
+(Fed announcements, debt-ceiling votes, committee markups, regulatory
+action dates). v1/v2/v2.5 tested the broad population, the leadership
+subgroup, and the spouse-touched subgroup — but never the
+*event-windowed* slice across any of those.
+
+**Status.** Roadmapped, not started. Promoted after the 2026-05-23
+international-disclosure survey eliminated cross-jurisdictional
+replication as a near-term path (see above).
+
+**Shape.** Stratify existing US trades by whether they fall within a
+±N-day window around dated policy events. Reuses the engine
+unchanged — adds an event-window filter parameter analogous to
+`leadership_only` / `owner_filter`.
+
+**Data needed.** A dated event table. Initial scope candidates,
+roughly in order of cost:
+- FOMC meeting dates (FRED has these structured) — pure macro,
+  affects everything; cleanest first test
+- Major congressional vote dates (debt-ceiling, continuing-resolution
+  deadlines, defense appropriations) — Congress.gov bulk data
+- Committee markup dates by committee (would interact with v2
+  positions data) — Congress.gov / GovTrack
+- Regulatory action dates (Federal Register / agency press
+  releases) — heavier ingest, defer
+
+**Engine change required.** Small. Add a `policy_event_windows: list[date]`
+(or a dedicated table) and a `window_days: int` parameter. Filter
+events to those whose `filing_date` (or `transaction_date`, for
+diagnostic) falls within `window_days` of *any* event in the list.
+
+**What this does NOT do.** It doesn't add a new theoretical primitive
+— it's still the same Wei & Zhou informational channel, just
+tested with a tighter time-window prior. If the broad / leadership /
+spouse cuts all came back null or borderline-null, an event-windowed
+cut is a natural way to ask "was the signal there but diluted by
+non-event noise?"
 
 ---
 
