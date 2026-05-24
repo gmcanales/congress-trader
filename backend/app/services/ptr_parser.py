@@ -241,11 +241,12 @@ def _parse_table(table_lines: list[str], base_confidence: str) -> list[ParsedTra
 # columns (type word + date + amount) and recover the description from the
 # left.
 
-ANCHOR_RE_278T = re.compile(
-    r"^\s+(?P<desc>\S.*?)\s{2,}"
-    r"(?P<type>Purchase|Sale\s*\([A-Za-z]+\)|Sale|Exchange)\s+"
-    r"(?P<txdate>\d{1,2}/\d{1,2}/\d{4})\s+"
-    r"(?P<amt>(?:\$|Over\s*\$)[\d,. \-•$]+)\s*$"
+TYPE_WORD_RE_278T = re.compile(
+    r"\b(?P<type>Purchase|Sale\s*\([A-Za-z]+\)|Sale|Exchange)\b"
+)
+DATE_RE_278T = re.compile(r"\b(?P<txdate>\d{1,2}/\d{1,2}/\d{4})\b")
+AMOUNT_RE_278T = re.compile(
+    r"(?:\$|Over\s*\$)[\d,]+(?:\s*[-–—•]\s*\$[\d,]+)?"
 )
 
 TYPE_MAP_278T = {
@@ -289,23 +290,42 @@ def parse_278t_text(text: str, source: str = "digital") -> ParsedPTR:
     """
     result = ParsedPTR(parse_method=source)
 
+    # Cleanup poppler artifact: "$1 ,000,000" → "$1,000,000". Common in
+    # older OGE form layouts (e.g. Trump's pre-2024 PDFs); the comma comes
+    # out of pdftotext separated from the preceding digit. Apply globally
+    # so amount parsing further down sees clean numbers.
+    text = re.sub(r"(\$[\d,]+)\s+(,)", r"\1\2", text)
+    text = re.sub(r"(,\d+)\s+(,)", r"\1\2", text)
+
     # Filer name lives in the form-header table near the top of the PDF.
-    # Layout (column headers on one line, values on the next):
-    #   "Last Name  [whitespace] First Name [whitespace] Mi"
-    #   "Trump      [whitespace] Donald"
-    # poppler sometimes collapses the trailing "Mi" header label into the
-    # preceding "First Name" cell — be lenient.
-    header_m = re.search(
-        r"Last Name\s+First Name(?:\s+M[il]?)?\s*\n+(\S[^\n]*?)\s{3,}(\S[^\n]*?)(?:\s+|$)",
-        text,
-    )
-    if header_m:
-        last = header_m.group(1).strip()
-        first = header_m.group(2).strip()
-        result.member_name = f"{first} {last}".strip()
-    else:
-        # Fall back to "Filer's Name" block which appears further down on the
-        # cover page. Skip any "Page N of M" garbage that poppler may insert.
+    # Three observed layouts (in order of preference):
+    #   A) Newer (2024+) "Filer's Information" block — single header line,
+    #      name on next non-blank line as "Last, First":
+    #        Filer's Information
+    #        Burgum, Doug
+    #   B) Older (pre-2024) "Last Name | First Name | MI" column layout:
+    #        Last Name                First Name                MI
+    #        Trump                    Donald
+    #   C) Fallback: "Filer's Name" block further down the cover page.
+    for m in re.finditer(r"Filer'?s? Information\s*\n+\s*(\S[^\n]*)", text):
+        cand = m.group(1).strip()
+        # Expect "Last, First [Middle]" — skip if it looks like garbage
+        if "," in cand and not re.search(r"\b[Pp]a[gq]e\b", cand):
+            last, _, rest = cand.partition(",")
+            result.member_name = f"{rest.strip()} {last.strip()}".strip()
+            break
+
+    if not result.member_name:
+        header_m = re.search(
+            r"Last Name\s+First Name(?:\s+M[il]?)?\s*\n+(\S[^\n]*?)\s{3,}(\S[^\n]*?)(?:\s+|$)",
+            text,
+        )
+        if header_m:
+            last = header_m.group(1).strip()
+            first = header_m.group(2).strip()
+            result.member_name = f"{first} {last}".strip()
+
+    if not result.member_name:
         for m in re.finditer(r"Filer'?s? Name\s*\n+\s*(\S[^\n]*)", text):
             cand = m.group(1).strip()
             if not re.search(r"\b[Pp]a[gq]e\b|\bof\b", cand):
@@ -316,34 +336,94 @@ def parse_278t_text(text: str, source: str = "digital") -> ParsedPTR:
     # Less than 'high' because no ticker is extractable from the description
     # and downstream resolution will add uncertainty.
 
+    # 278-T layouts vary across cabinet officials and form-version revisions:
+    #   - Trump-style: "{description}  Type  Date  Amount" inline
+    #   - Burgum-style: "{#}  {description}  See Endnote  Type  Date  {Yes/No}  Amount"
+    #     plus amount can wrap to the next line for large ranges like
+    #     "$1,000,001 -\n$5,000,000"
+    # The two share an anchor pattern: a transaction-type word + a date + an
+    # amount-range, all on (mostly) the same line. We scan line-by-line for
+    # that triple and recover description from the prefix.
+    lines = text.splitlines()
     transactions: list[ParsedTransaction] = []
-    for line in text.splitlines():
-        m = ANCHOR_RE_278T.match(line)
-        if not m:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        type_m = TYPE_WORD_RE_278T.search(line)
+        date_m = DATE_RE_278T.search(line) if type_m else None
+        if not (type_m and date_m) or date_m.start() < type_m.end():
+            i += 1
             continue
-        type_raw = re.sub(r"\s+", " ", m.group("type")).strip()
+
+        amt_m = AMOUNT_RE_278T.search(line, date_m.end())
+        amt_raw = amt_m.group(0) if amt_m else ""
+        # Amount range can wrap when the upper bound is on the next line —
+        # the first line ends with "$N,NNN -" and the next has "$M,MMM".
+        # The trailing dash may be AFTER our regex match (the regex
+        # captures only "$N,NNN", leaving " -" unconsumed), so check the
+        # source-line remainder rather than amt_raw itself.
+        if amt_m and (i + 1) < len(lines):
+            remainder = line[amt_m.end():].strip()
+            if remainder in ("-", "•", "–", "—") or remainder.startswith("- "):
+                cont = AMOUNT_RE_278T.search(lines[i + 1])
+                if cont:
+                    amt_raw = amt_raw + " - " + cont.group(0)
+        if not amt_raw:
+            i += 1
+            continue
+
+        # Description: prefix of the line before the type word, minus the
+        # leading row number and any trailing "See Endnote" column marker.
+        desc = line[:type_m.start()].strip()
+        desc = re.sub(r"^\d+\s+", "", desc)
+        desc = re.sub(r"\s+See\s+Endnote\s*$", "", desc, flags=re.IGNORECASE)
+        # Some filings continue the description onto the next physical
+        # line (parenthetical product names, etc.). Pull a single
+        # continuation line if it doesn't look like the next anchor.
+        if (i + 1) < len(lines):
+            next_line = lines[i + 1]
+            looks_like_next_anchor = bool(
+                TYPE_WORD_RE_278T.search(next_line)
+                and DATE_RE_278T.search(next_line)
+            )
+            cont = next_line.strip()
+            if (not looks_like_next_anchor and cont
+                    and not cont.startswith("$") and not cont[0].isdigit()):
+                desc = (desc + " " + cont).strip()
+
+        type_raw = re.sub(r"\s+", " ", type_m.group("type")).strip()
         tx_type = TYPE_MAP_278T.get(type_raw, "unknown")
-        amount_min, amount_max = _parse_amount_278t(m.group("amt"))
+        amount_min, amount_max = _parse_amount_278t(amt_raw)
         confidence = base_confidence
         if tx_type == "unknown":
             confidence = "low"
         if amount_min is None:
             confidence = "low"
 
+        # Try to extract a ticker from the description. Many OGE 278-T
+        # asset names include the ticker in trailing parens, e.g.
+        # "Microsoft Corp. (MSFT)" or "iShares ... (IWF)". We reuse the
+        # same loose extractor as House PTRs. ~60% of executive
+        # transactions yield a ticker this way; the rest are
+        # private-equity / fund-of-funds names with no public ticker.
+        loose_matches = TICKER_LOOSE_RE.findall(desc)
+        ticker = loose_matches[-1] if loose_matches else None
+
         transactions.append(ParsedTransaction(
             owner=None,
-            asset_name=m.group("desc").strip(),
-            ticker=None,
+            asset_name=desc,
+            ticker=ticker,
             asset_type=None,
             transaction_type=tx_type,
-            transaction_date=_parse_date(m.group("txdate")),
+            transaction_date=_parse_date(date_m.group("txdate")),
             notification_date=None,
             amount_min=amount_min,
             amount_max=amount_max,
-            amount_raw=m.group("amt").strip(),
+            amount_raw=amt_raw.strip(),
             confidence=confidence,
             raw_text=line,
         ))
+        i += 1
 
     result.transactions = transactions
     return result

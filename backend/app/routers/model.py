@@ -34,6 +34,7 @@ class AnalyzeRequest(BaseModel):
     trailing_stop_pct: float = 0.15  # only used for mirror_sell_with_trailing_stop
     time_stop_days: int = 252        # fallback close after N trading days if no mirror sale
     owner_filter: str = "any"        # any | self | spouse_or_joint | spouse_only | joint_only | dependent
+    filer_types: list[str] | None = None  # None = all; ['member'] = congressional only; ['executive'] = cabinet/PAS only
 
 
 def _extract_scores(result: dict) -> dict:
@@ -46,6 +47,7 @@ def _extract_scores(result: dict) -> dict:
         "benchmark_mode": result.get("benchmark_mode", "ticker"),
         "leadership_only": result.get("leadership_only", False),
         "owner_filter": result.get("owner_filter", "any"),
+        "filer_types": result.get("filer_types"),
         "exit_policy": result.get("exit_policy", "fixed_horizon"),
         "selected_params": result["selected_params"],
         "train_excess": st["excess_return"],
@@ -75,6 +77,7 @@ def _run(run_id: int) -> None:
             trailing_stop_pct=p.get("trailing_stop_pct", 0.15),
             time_stop_days=p.get("time_stop_days", 252),
             owner_filter=p.get("owner_filter", "any"),
+            filer_types=p.get("filer_types"),
         )
         run.full_results = result
         run.scores = _extract_scores(result)
@@ -129,6 +132,7 @@ def run_model(req: AnalyzeRequest, background_tasks: BackgroundTasks,
         "trailing_stop_pct": req.trailing_stop_pct,
         "time_stop_days": req.time_stop_days,
         "owner_filter": req.owner_filter,
+        "filer_types": req.filer_types,
     }
     run = models.AnalysisRun(
         dataset_id=req.dataset_id, tool="train_test_analysis",

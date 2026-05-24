@@ -34,7 +34,7 @@ from app.services.backtest import (
     DEFAULT_BENCHMARK, SELL_TYPES, GICS_TO_ETF,
     LEADERSHIP_ROLE_TYPES, OWNER_FILTERS,
     ensure_prices, _close_series, _compute_beta, _find_first_exit_idx,
-    _apply_owner_filter,
+    _apply_owner_filter, _apply_filer_types,
 )
 
 
@@ -87,6 +87,7 @@ RISK_PROFILES: dict[str, dict] = {
         "description": "Broad universe, beta-scaled risk control.",
         "universe": "all",
         "owner_filter": "any",
+        "filer_types": ["member"],  # scope to congressional members; cabinet 278-T data lives alongside but isn't part of these profiles
         "exit_policy": "mirror_sell_with_beta_trailing_stop",
         "trailing_stop_pct": 0.15,
         "time_stop_days": 252,
@@ -97,6 +98,7 @@ RISK_PROFILES: dict[str, dict] = {
         "description": "Leadership universe, beta-scaled risk control.",
         "universe": "leadership",
         "owner_filter": "any",
+        "filer_types": ["member"],
         "exit_policy": "mirror_sell_with_beta_trailing_stop",
         "trailing_stop_pct": 0.15,
         "time_stop_days": 252,
@@ -108,6 +110,7 @@ RISK_PROFILES: dict[str, dict] = {
                        "OOS excess but no intra-position drawdown protection.",
         "universe": "leadership",
         "owner_filter": "any",
+        "filer_types": ["member"],
         "exit_policy": "mirror_sell",
         "trailing_stop_pct": 0.0,
         "time_stop_days": 252,
@@ -124,6 +127,7 @@ RISK_PROFILES: dict[str, dict] = {
                        "leadership/trifecta controls. Beta-stop exit.",
         "universe": "all",
         "owner_filter": "spouse_or_joint",
+        "filer_types": ["member"],
         "exit_policy": "mirror_sell_with_beta_trailing_stop",
         "trailing_stop_pct": 0.15,
         "time_stop_days": 252,
@@ -164,6 +168,7 @@ def list_risk_profiles() -> list[dict]:
             "description": prof["description"],
             "universe": prof["universe"],
             "owner_filter": prof.get("owner_filter", "any"),
+            "filer_types": prof.get("filer_types", ["member"]),
             "exit_policy": prof["exit_policy"],
             "trailing_stop_pct": prof["trailing_stop_pct"],
             "time_stop_days": prof["time_stop_days"],
@@ -197,6 +202,10 @@ def compute_recommendations(as_of: date,
     owner_filter = cfg.get("owner_filter", "any")
     if owner_filter not in OWNER_FILTERS:
         raise ValueError(f"unknown owner_filter: {owner_filter!r}")
+    # Default to congressional members only — cabinet 278-T data (added
+    # 2026-05-23) lives in the same `members` table but isn't part of any
+    # built-in profile yet. Per-profile filer_types overrides this.
+    filer_types = cfg.get("filer_types", ["member"])
     exit_policy = cfg["exit_policy"]
     trailing_stop_pct = cfg["trailing_stop_pct"]
     time_stop_days = cfg["time_stop_days"]
@@ -240,6 +249,7 @@ def compute_recommendations(as_of: date,
             )
             eq = eq.filter(leadership_filter)
         eq = _apply_owner_filter(eq, owner_filter)
+        eq = _apply_filer_types(eq, filer_types)
         entries = eq.order_by(models.Transaction.filing_date).all()
 
         # All sales by relevant members on those tickers, up to AND including
@@ -259,9 +269,12 @@ def compute_recommendations(as_of: date,
                 models.Transaction.filing_date <= as_of,
                 models.Transaction.transaction_type.in_(SELL_TYPES),
             )
-            # Mirror exits should match owner class: a spouse-buy strategy
-            # exits when the spouse sells, not when the member sells.
+            # Mirror exits should match owner class AND filer type: a
+            # spouse-buy strategy exits when the spouse sells; a cabinet
+            # strategy mirrors cabinet sales, not member sales of the
+            # same ticker.
             sq = _apply_owner_filter(sq, owner_filter)
+            sq = _apply_filer_types(sq, filer_types)
             for s_ticker, s_date, s_member in sq.all():
                 sales_by_key.setdefault((s_member, s_ticker), []).append(s_date)
 
@@ -411,6 +424,7 @@ def compute_recommendations(as_of: date,
             "strategy_config": {
                 "universe": cfg["universe"],
                 "owner_filter": owner_filter,
+                "filer_types": filer_types,
                 "exit_policy": exit_policy,
                 "trailing_stop_pct": trailing_stop_pct,
                 "time_stop_days": time_stop_days,

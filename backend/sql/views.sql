@@ -3,6 +3,12 @@
 
 -- Canonical "analyzable trades" surface: stock-ticker transactions with member
 -- and disclosure attributes denormalized. Analysis tools should read this.
+-- New columns (filer_type, position_title — 2026-05-23 OGE 278-T work)
+-- MUST be appended at the END. Postgres CREATE OR REPLACE VIEW only
+-- accepts the new schema if columns added are appended and existing
+-- columns keep position+type. Inserting in the middle = "cannot change
+-- name of view column".
+DROP VIEW IF EXISTS v_stock_transactions_leadership;  -- depends on v_stock_transactions
 CREATE OR REPLACE VIEW v_stock_transactions AS
 SELECT
     t.id,
@@ -25,7 +31,9 @@ SELECT
     m.state_dst,
     d.doc_id,
     d.parse_method,
-    d.year AS filing_year
+    d.year AS filing_year,
+    m.filer_type,
+    m.position_title
 FROM transactions t
 JOIN members m ON m.id = t.member_id
 LEFT JOIN disclosures d ON d.id = t.disclosure_id

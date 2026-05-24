@@ -71,6 +71,8 @@ def main() -> None:
     p.add_argument("--owner-filter",
                    choices=list(backtest.OWNER_FILTERS), default="any",
                    help="restrict by who held the asset: any | self | spouse_or_joint | spouse_only | joint_only | dependent")
+    p.add_argument("--filer-types", type=lambda s: s.split(","), default=None,
+                   help="comma-sep list of filer types: member,executive. Default = all.")
     p.add_argument("--output", help="path to write the full result JSON")
     args = p.parse_args()
 
@@ -91,6 +93,7 @@ def main() -> None:
         benchmark=args.benchmark, leadership_only=args.leadership_only,
         benchmark_mode=args.benchmark_mode,
         owner_filter=args.owner_filter,
+        filer_types=args.filer_types,
     )
 
     _print_event_study(result["event_study"]["train"], "TRAIN")
