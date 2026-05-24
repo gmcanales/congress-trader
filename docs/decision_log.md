@@ -848,53 +848,167 @@ lowest-cost option.
 - ✗ The 2012 provision was rolled back by S.716 in 2013
 - ✗ Staff PTRs are NOT bulk-accessible online today
 
-### 6.3 OGE Form 278-T (cabinet / executive branch) — roadmap, candidate
+### 6.3 OGE Form 278-T (cabinet / executive branch) — done, 2026-05-23
 
-**Why.** With staff ruled out, OGE 278-T is the next smallest viable
-new-data option that's PTR-shape and engine-compatible. Covered
-universe is ~25 cabinet + ~50 senior sub-cabinet officials (~75
-total). 278-T is the Periodic Transaction Report for the executive
-branch — same shape as Congress PTRs, same value brackets, same
-30/45-day rule, same parser pipeline.
+**Why.** With staff ruled out (§6.2), OGE 278-T was the next smallest
+viable new-data option that's PTR-shape and engine-compatible. 278-T
+is the Periodic Transaction Report for the executive branch — same
+shape as Congress PTRs (value brackets, 30/45-day rule, per-trade
+events).
 
-**Data access.** OGE 278-T filings are publicly available but **not
-online in bulk**. Public output is PDFs released via OGE Form 201
-request (see `memory/reference_political_disclosure_sources.md`).
-Typical turnaround: weeks. The S.716 (2013) amendment that removed
-online publication for staff also affected "certain executive branch
-officers and employees" below President/VP — which is why OGE 278-T
-isn't on a public bulk feed analogous to disclosures-clerk.house.gov.
+**Data access — what's actually online (correction to earlier memory).**
+The pre-work memory entry under [`reference_political_disclosure_sources`](../../.claude/projects/.../memory/reference_political_disclosure_sources.md)
+claimed OGE 278-T data was "PDF only via Form 201 request." That was
+incomplete. The actual state as of 2026-05-23:
 
-**Engineering shape.**
-1. File OGE Form 201 with the agency requesting cabinet + senior
-   sub-cabinet 278-T filings for 2021–2025.
-2. Wait weeks for PDF delivery.
-3. Parse with the existing `services/ptr_parser.py` + `services/ocr.py`
-   pipeline (~12% scanned-form failure rate expected; same as House).
-4. Schema additions: same `filer_type` enum we'd discussed for staff
-   (now `'member'` / `'executive'`), no employer-relationship
-   complexity because cabinet officials work for the President as a
-   class rather than for individual members.
+- **For Presidentially-Appointed Senate-confirmed (PAS) officials** —
+  Cabinet secretaries, deputy secretaries, agency heads, ~700+ filers
+  by ProPublica's Trump-Town count — 278-T PDFs are **directly
+  downloadable online** at `extapps2.oge.gov/201/Presiden.nsf/...`,
+  no Form 201 request needed. This includes the President, VP, every
+  cabinet member, and most sub-cabinet positions confirmed by the
+  Senate.
+- **Form 201 is for non-PAS executive employees** (lower-level GS
+  officials who file under STOCK Act but were carved out of online
+  publication by S.716 in 2013 — same carve-out that affected
+  congressional staff). Those filings exist on paper at OGE's
+  reading room.
+- **6-7 year retention.** Federal law requires OGE to destroy most
+  public financial disclosure reports 6-7 years after creation, so the
+  online universe is bounded to roughly 2019+.
 
-**Status.** Roadmapped, not started. Pending decision on whether to
-file the Form 201 request now (to start the multi-week wait clock)
-or scope policy-event windows first (§6.1) and revisit later.
+So Form 201 isn't part of our ingest path — direct online scraping is.
 
-**Constraints worth flagging up-front.**
-- **2025-01-03 trifecta cohort confound.** All cabinet officials
-  turned over at administration change, so leadership / party / regime
-  variables become collinear with `is_post_trifecta` — same issue v2
-  hit, possibly worse because the cabinet universe is smaller and
-  the turnover is total.
-- **Stricter divestiture rules than Congress.** Cabinet officials
-  often divest into qualified blind trusts (certificate of divestiture
-  under 26 USC §1043). The people who *still trade openly* are a
-  self-selected slice. Population is structurally different from
-  Congress, not just smaller.
-- **Small universe means underpowered analysis.** ~75 officials × 5
-  years probably yields <500 analyzable trades after divestiture
-  filtering. Comparable to the v2 leadership cut (~600 leadership
-  trades) but with more confounds.
+**Engineering shape (built, not theoretical).**
+
+The OGE site is a Lotus Notes (IBM Domino XPages) app with a
+JavaScript-rendered DataTables interface; bare curl can't enumerate
+filings because the table data loads via an XPages REST endpoint
+(`/API.xsp/v2/rest`) that needs session cookies. We drive it through
+headless Chromium.
+
+| Step | Tool | Notes |
+|---|---|---|
+| Index | Playwright headless Chromium drives the "PAS Filings by Date" view | Pages through 16,794 total entries via DataTables API; filters to the 318 with type='278 Transaction' and a direct doc URL |
+| Download | httpx | Each PDF is ~10kB–13MB depending on form length |
+| Parse | New `parse_278t_text()` in `ptr_parser.py` | Dispatched via `_is_278t()` detection on the form header; two layouts handled |
+| Schema | `members.filer_type` ('member'/'executive') + `members.position_title` | Same `members` table; one Position row per filer with `role_type='executive_cabinet'` covering their filing window |
+| Engine | New `filer_types: list[str] \| None` param on event_study / rules_backtest / train_test_analysis | Default None preserves existing behavior; analysis paths pass `['executive']` or `['member']` to scope |
+| Recs | All 4 existing RISK_PROFILES pinned to `filer_types=['member']` | Cabinet data lives alongside Congress in the same `members` table but doesn't silently appear in live snapshots |
+
+Pipeline lives in `backend/ingest_oge.py` as a two-phase CLI:
+`python ingest_oge.py all` runs scrape + parse + DB-insert end-to-end.
+
+**278-T parser specifics.** Three observed table layouts:
+- Trump's pre-2024 form: row number and notification flag on a previous
+  physical line; description / Type / Date / Amount inline.
+- Burgum/Phelan-era 2024+ form: `#  description  See Endnote  Type  Date
+  Yes|No  Amount` all on one line, with amount-wrap when the upper
+  bound is large (e.g. `$1,000,001 -\n$5,000,000`).
+- Trump's 05/08/2026 (2) filing: badly OCR-garbled text layer
+  ("curchue" for "Purchase") — parses 0 rows; would need re-OCR to
+  recover ~1,838 transactions, deferred.
+
+Parser anchors on the (Type word + Date + Amount range) triple and
+recovers description from the prefix. Tolerates poppler artifacts:
+`$1 ,000,000` space-inside-numbers, `•` as range separator.
+
+**Ticker extraction.** Reuses the House PTR `TICKER_LOOSE_RE` against
+the description. ~60% of 278-T asset names embed the ticker in
+trailing parens ("Microsoft Corp. (MSFT)", "Meta Platforms Inc.
+Class A Common Stock (META)"); the other 40% are PE/VC funds,
+fund-of-funds, and muni bonds with no resolvable public ticker.
+A name→ticker lookup table could recover some equity rows that
+don't include parens ("Meta Platforms Inc" without `(META)`, etc.);
+deferred.
+
+**Ingest results (2026-05-23):**
+
+| Metric | Value |
+|---|---|
+| PAS filings in OGE index (all types) | 16,794 |
+| Of those, "278 Transaction" type | 318 |
+| Filings parsed | **318 / 318 (0 failures)** |
+| Unique executive filers | 78 |
+| Transactions extracted | **5,033** |
+| Of those, with public-ticker resolvable | **3,057 (60.7%)** |
+| Year coverage | 2020 – 2026 (full retention window) |
+
+Top filers by trade volume:
+
+| Filer | Role | n |
+|---|---|---|
+| Andrew Saul | SSA Commissioner (Trump 1) | 676 |
+| Arjun Mody | Deputy Commissioner | 301 |
+| Christopher A Wright | Energy Sec (Trump 2) | 301 |
+| Eric S Lander | OSTP Director (Biden) | 263 |
+| Donald J Trump | President | 247 |
+| Nuria Fernandez | FTA Administrator (Biden) | 245 |
+| Barbara M Barrett | (former Air Force Sec) | 196 |
+| Donald Remy | Deputy Secretary | 165 |
+| Linda E McMahon | (former SBA / Education) | 156 |
+| Douglas J Burgum | Interior Sec (Trump 2) | 147 |
+
+Year distribution shows the expected administration-transition surges:
+2020: 736, 2021: 1,242 (Biden divestiture), 2022-24: 133-346, 2025:
+1,808 (Trump 2 divestiture), 2026: 515.
+
+**First-cut analysis (single-call event study, not yet a persisted
+AnalysisRun — see §6.4).** OOS 2025 window, same as v1 #7/#8 / v2.5
+#55-58:
+
+| Population | n | mean excess vs SPY | t | mean excess vs RSP | t |
+|---|---|---|---|---|---|
+| Congress purchases | 782 | +0.67% | 1.04 | +1.98% | **3.0** |
+| **Cabinet purchases** | **348** | **−0.93%** | **−1.32** | +0.33% | 0.48 |
+| Cabinet sales | 522 | −1.31% | — | +0.59% | — |
+
+**Genuine population contrast.** Cabinet purchases underperform SPY
+where congressional purchases mildly outperform. Consistent with the
+divestiture-selection story flagged up-front: cabinet officials forced
+to dump winners to satisfy ethics rules end up with worse-than-average
+buys. The vs-RSP gap (essentially zero for cabinet, significant for
+Congress) suggests Congress retains an equal-weight tilt advantage
+that cabinet doesn't.
+
+This is the **first time the project has surfaced a directional
+difference between two populations** — v1, v2, and v2.5 all landed
+on near-null. Cabinet underperforming SPY at t=−1.32 isn't
+statistically significant yet but the sign is the opposite of
+congressional purchases, which is interesting in itself.
+
+**Constraints to keep in mind when interpreting cabinet results.**
+
+- **2025-01-03 trifecta cohort confound** is severe in the cabinet
+  dataset. All cabinet officials turned over at admin change, so
+  party / regime / leadership variables are highly collinear with
+  `is_post_trifecta`. Worse than v2's leadership-cut version of the
+  same confound because cabinet turnover is total.
+- **Divestiture self-selection.** Cabinet officials often divest into
+  qualified blind trusts (certificate of divestiture under 26 USC
+  §1043). The cabinet members who still trade openly are a
+  self-selected slice — structurally different from Congress, not
+  just smaller.
+- **Small N.** 3,057 ticker-resolvable trades across 5 years and 78
+  filers is comparable in size to v2.5's spouse cut (2,358 SP+JT
+  rows), so the HDI on any cabinet-specific Bayesian coefficient
+  will be similarly wide.
+
+### 6.4 v2.6 cabinet analysis runs (in progress)
+
+Formal `AnalysisRun` persistence for cabinet, mirroring v1 #7/#8 and
+v2.5 #55-58 patterns. Three configurations planned:
+
+- `filer_types=['executive']`, leadership_only=False, owner_filter='any',
+  filing_date anchor, hold=63, min_members=1, SPY benchmark — cabinet
+  rules-backtest analog of run #7.
+- Same but RSP benchmark — analog of #8.
+- Bayesian re-fit of `bayesian_model.py` with new `is_executive` (or
+  equivalent) coefficient on the combined Congress+cabinet dataset,
+  to get a posterior on the cabinet effect after controlling for
+  party / sector / trifecta.
+
+Documented as separate sub-sections / run-catalog rows once landed.
 
 ### 6.1 Policy-event windows (roadmap, on deck)
 

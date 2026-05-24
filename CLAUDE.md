@@ -231,8 +231,26 @@ docker-compose.yml  .env
   rules-backtest NAV result and the per-trade event-study mean can
   disagree by 8+ percentage points (rules can be inflated by sequencing,
   not edge) — always report both.
+- **v2.6 — cabinet / OGE 278-T data ingested (2026-05-23).** 318/318
+  PAS-official filings scraped from `extapps2.oge.gov` via Playwright,
+  parsed with a new 278-T variant of `ptr_parser.py`, written to
+  `members.filer_type='executive'`. Universe: 78 unique cabinet /
+  sub-cabinet filers, 5,033 transactions, 3,057 (60.7%) ticker-
+  resolvable. Coverage 2020–2026. Engine now has a `filer_types`
+  parameter; existing RISK_PROFILES pinned to `['member']` so the
+  cabinet data lives alongside Congress but doesn't silently appear
+  in live recommendation snapshots. **First-cut directional finding:**
+  cabinet *purchases* underperform SPY in 2025 (−0.93%/trade, t=−1.32,
+  n=348) where congressional purchases mildly outperform (+0.67%/trade,
+  t=1.04, n=782). Sign-opposite from Congress for the first time in
+  the project, though not significant yet. Formal AnalysisRun
+  persistence + Bayesian re-fit with cabinet rows is §6.4 in the
+  decision log, in progress. See [`docs/decision_log.md §6.3`](docs/decision_log.md) for
+  the full ingest writeup.
 - Known data gap: ~12% scanned/checkbox-grid filings parse poorly
-  (deferred).
+  (deferred). Trump's 05/08/2026 (2) 278-T filing is OCR-garbled
+  in its embedded text layer and would need re-OCR to recover its
+  ~1,838 transactions (deferred).
 - App is publicly reachable at https://goosebase.org via Cloudflare Tunnel
   + Access (email-OTP allowlist). See "Public deployment" above.
 - **NUC migration complete (2026-05-23).** Backend + frontend + cloudflared
