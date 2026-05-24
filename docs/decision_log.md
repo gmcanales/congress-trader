@@ -994,21 +994,81 @@ congressional purchases, which is interesting in itself.
   rows), so the HDI on any cabinet-specific Bayesian coefficient
   will be similarly wide.
 
-### 6.4 v2.6 cabinet analysis runs (in progress)
+### 6.4 v2.6 cabinet analysis runs (done — 2026-05-24)
 
-Formal `AnalysisRun` persistence for cabinet, mirroring v1 #7/#8 and
-v2.5 #55-58 patterns. Three configurations planned:
+Four `AnalysisRun` rows persisted (#64-67), mirroring the v1 #7/#8
+(fixed_horizon) and v2.5 #62 (mirror+beta-stop with extended OOS
+window for recommendation-comparable NAV curves) patterns. All four
+scoped via `filer_types=['executive']`, leadership_only=False,
+owner_filter='any', filing_date anchor, hold=63, min_members=1.
 
-- `filer_types=['executive']`, leadership_only=False, owner_filter='any',
-  filing_date anchor, hold=63, min_members=1, SPY benchmark — cabinet
-  rules-backtest analog of run #7.
-- Same but RSP benchmark — analog of #8.
-- Bayesian re-fit of `bayesian_model.py` with new `is_executive` (or
-  equivalent) coefficient on the combined Congress+cabinet dataset,
-  to get a posterior on the cabinet effect after controlling for
-  party / sector / trifecta.
+| Run | Exit | Bench | Test end | Train excess | OOS excess | OOS strat | OOS bench |
+|---|---|---|---|---|---|---|---|
+| #64 | fixed_horizon | SPY | 2025-12-31 | −46.84% | **−3.16%** | +14.85% | +18.01% |
+| #65 | fixed_horizon | RSP | 2025-12-31 | −27.39% | +3.31% | +14.85% | +11.54% |
+| #66 | mirror+beta-stop | SPY | 2026-04-30 | −7.67% | **−9.10%** | +15.60% | +24.71% |
+| #67 | mirror+beta-stop | RSP | 2026-04-30 | +11.78% | −3.36% | +15.60% | +18.96% |
 
-Documented as separate sub-sections / run-catalog rows once landed.
+**Headline (rules-backtest):** the cabinet population underperforms
+SPY consistently in 2025 OOS (−3.16% on the shorter window, −9.10%
+on the longer window matched to recommendation profiles). Performance
+against the equal-weight RSP is barely positive on the shorter window
+(+3.31%) and negative on the longer (−3.36%). This is the same
+directional signal as the one-off event study captured (cabinet
+purchases −0.93%/trade vs SPY at t=−1.32, n=348) — the rules
+backtest puts the population-level number in the same place.
+
+**Train-period numbers are uniformly terrible** (−47% to +12%), but
+that's an artifact of the data shape: 2021-2024 has only 1,972
+cabinet trades (vs 1,808 in 2025 alone), and the early Biden cabinet
+in particular concentrated heavily in divestiture-driven sales
+during 2021. The strategy of "follow cabinet trades" on that period
+just isn't long enough or balanced enough to backtest cleanly.
+
+**Comparison to congressional baseline** (v1 #7/#8 / v2.5 #55-58
+shape):
+
+| Population | OOS excess vs SPY | OOS excess vs RSP |
+|---|---|---|
+| Congress (v1 #7/#8) | −2.82% | +0.09% |
+| Spouse-touched (v2.5 #55/#56) | +8.43% (sequencing) / +0.07% (per-trade) | +14.90% (sequencing) / +1.62% (per-trade) |
+| Self-only (v2.5 #57/#58) | −0.94% | +5.53% |
+| **Cabinet (v2.6 #64/#65)** | **−3.16%** | +3.31% |
+| **Cabinet (mirror, #66/#67)** | **−9.10%** | −3.36% |
+
+Cabinet is the first population in the project that's **clearly
+worse than Congress** vs SPY. Consistent with the divestiture
+self-selection story called out up front (§6.3 constraints): cabinet
+officials forced to dump positions to satisfy ethics rules don't
+optimize for return, and the residual trading pool is structurally
+adverse-selected.
+
+**Bayesian re-fit (deferred).** A clean cabinet Bayesian model is
+non-trivial because:
+- Cabinet rows have NULL `chamber` and NULL `party`, so the
+  existing `in_majority` / `party_R` features don't apply. They'd
+  need to be coerced to 0 or replaced with cabinet-specific
+  encodings (e.g., `is_trump_cabinet` vs `is_biden_cabinet`).
+- 2025-01-03 trifecta is perfectly collinear with the cabinet
+  party-change in the data: almost all post-trifecta cabinet trades
+  are Trump-2-era. An `is_executive` coefficient and
+  `is_post_trifecta` would be near-impossible to disentangle.
+- A separate cabinet-only Bayesian model (78 filers, 3,057
+  ticker-resolvable trades) would be feasible but loses the
+  comparison-to-Congress angle.
+
+Deferred to a follow-up session with a clearer methodological
+choice on which Bayesian shape best preserves cabinet vs. Congress
+interpretability. The rules-backtest result (#64-67) is the
+primary v2.6 finding for now.
+
+**Recommendation-engine note.** No `cabinet_favored` profile was
+added. The rules-backtest result is negative against both benchmarks
+on the longer-window mirror config (#66/#67 — the shape that backs
+the other live profiles), so there's no useful strategy to expose
+in the UI. Cabinet data sits in the database for analytical use; the
+4 live profiles remain congressional-only (per the `filer_types=['member']`
+pin landed in `b06e944`).
 
 ### 6.1 Policy-event windows (roadmap, on deck)
 
@@ -1085,6 +1145,10 @@ database). Tool `train_test_analysis` unless noted.
 | #59 | 2026-05-23 | filing_date | — | — | — | — | `bayesian_hierarchical` first fit (R̂=1.02; superseded) |
 | #60 | 2026-05-23 | filing_date | — | — | — | — | **`bayesian_hierarchical` with `is_spouse_owned`** (canonical v2.5) |
 | #62 | 2026-05-23 | filing_date | RSP | no | [63] | [1] | **`spouse_favored` backing run** (owner=spouse_or_joint, mirror+beta-stop, test→2026-04-30); OOS excess +27.17% — same sequencing caveat as §5.4 |
+| #64 | 2026-05-24 | filing_date | SPY | no | [63] | [1] | **v2.6 cabinet** filer_types=['executive'], fixed_horizon, test→2025-12-31; **OOS excess −3.16%** vs SPY |
+| #65 | 2026-05-24 | filing_date | RSP | no | [63] | [1] | v2.6 cabinet, fixed_horizon RSP; OOS excess +3.31% |
+| #66 | 2026-05-24 | filing_date | SPY | no | [63] | [1] | v2.6 cabinet, mirror+beta-stop, test→2026-04-30; **OOS excess −9.10%** vs SPY |
+| #67 | 2026-05-24 | filing_date | RSP | no | [63] | [1] | v2.6 cabinet, mirror+beta-stop RSP, test→2026-04-30; OOS excess −3.36% |
 
 ---
 
