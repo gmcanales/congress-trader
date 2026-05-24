@@ -10,6 +10,7 @@ COPY docs.html /usr/share/nginx/html/
 COPY honks.html /usr/share/nginx/html/
 COPY friends.html /usr/share/nginx/html/
 COPY games.html /usr/share/nginx/html/
+COPY bsg-trail.html /usr/share/nginx/html/
 COPY css /usr/share/nginx/html/css
 COPY js /usr/share/nginx/html/js
 COPY img /usr/share/nginx/html/img
