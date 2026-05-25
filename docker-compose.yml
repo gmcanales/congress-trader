@@ -37,7 +37,11 @@ services:
     build:
       context: ./frontend
       args:
-        GIT_HASH: ${GIT_HASH:-dev}
+        # Empty by default → Dockerfile falls back to a build-time
+        # timestamp so cache busters are unique per build. scripts/deploy.sh
+        # exports GIT_HASH=<git short-hash> so same-commit redeploys
+        # reuse the same URL (intended cache reuse).
+        GIT_HASH: ${GIT_HASH:-}
     restart: unless-stopped
     ports:
       - "80:80"
