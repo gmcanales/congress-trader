@@ -14,6 +14,7 @@ COPY bsg-trail.html /usr/share/nginx/html/
 COPY css /usr/share/nginx/html/css
 COPY js /usr/share/nginx/html/js
 COPY img /usr/share/nginx/html/img
+COPY music /usr/share/nginx/html/music
 COPY greetings.csv /usr/share/nginx/html/
 
 # Inject cache-busting version into local JS/CSS asset URLs.
