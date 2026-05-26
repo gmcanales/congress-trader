@@ -9,6 +9,7 @@ COPY splash-admin.html /usr/share/nginx/html/
 COPY docs.html /usr/share/nginx/html/
 COPY honks.html /usr/share/nginx/html/
 COPY friends.html /usr/share/nginx/html/
+COPY pond-puzzles.html /usr/share/nginx/html/
 COPY games.html /usr/share/nginx/html/
 COPY bsg-trail.html /usr/share/nginx/html/
 COPY css /usr/share/nginx/html/css
@@ -25,11 +26,11 @@ COPY greetings.csv /usr/share/nginx/html/
 # running scripts/deploy.sh). The deploy script still passes the git
 # short-hash so same-commit redeploys reuse the same URL.
 RUN HASH="${GIT_HASH:-dev-$(date +%s)}" && \
-    find /usr/share/nginx/html -name "*.html" | while read f; do \
-      sed -i \
-        -e "s|src=\"/js/\([^\"?]*\)\"|src=\"/js/\1?v=${HASH}\"|g" \
-        -e "s|src=\"js/\([^\"?]*\)\"|src=\"js/\1?v=${HASH}\"|g" \
-        -e "s|href=\"/css/\([^\"?]*\)\"|href=\"/css/\1?v=${HASH}\"|g" \
-        -e "s|href=\"css/\([^\"?]*\)\"|href=\"css/\1?v=${HASH}\"|g" \
-        "$f"; \
-    done
+  find /usr/share/nginx/html -name "*.html" | while read f; do \
+  sed -i \
+  -e "s|src=\"/js/\([^\"?]*\)\"|src=\"/js/\1?v=${HASH}\"|g" \
+  -e "s|src=\"js/\([^\"?]*\)\"|src=\"js/\1?v=${HASH}\"|g" \
+  -e "s|href=\"/css/\([^\"?]*\)\"|href=\"/css/\1?v=${HASH}\"|g" \
+  -e "s|href=\"css/\([^\"?]*\)\"|href=\"css/\1?v=${HASH}\"|g" \
+  "$f"; \
+  done
