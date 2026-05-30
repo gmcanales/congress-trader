@@ -10,13 +10,17 @@ COPY docs.html /usr/share/nginx/html/
 COPY honks.html /usr/share/nginx/html/
 COPY friends.html /usr/share/nginx/html/
 COPY pond-puzzles.html /usr/share/nginx/html/
-COPY crosswords.html /usr/share/nginx/html/ 
+COPY crosswords.html /usr/share/nginx/html/
 COPY games.html /usr/share/nginx/html/
 COPY bsg-trail.html /usr/share/nginx/html/
+COPY spacex.html /usr/share/nginx/html/
+COPY spacex-mailer.html /usr/share/nginx/html/
+COPY spacex-accountability.html /usr/share/nginx/html/
 COPY css /usr/share/nginx/html/css
 COPY js /usr/share/nginx/html/js
 COPY img /usr/share/nginx/html/img
 COPY music /usr/share/nginx/html/music
+COPY data /usr/share/nginx/html/data
 COPY greetings.csv /usr/share/nginx/html/
 
 # Inject cache-busting version into local JS/CSS asset URLs.
