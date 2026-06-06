@@ -45,6 +45,14 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    volumes:
+      # Sibling-repo bind-mounts. Each external repo lives next to
+      # congress_trader/ and is served read-only under its own subpath.
+      # No rebuild needed when the sibling repo changes — just
+      # `docker compose restart frontend` (or nothing, since nginx reads
+      # files on each request). Cache busting is the sibling repo's
+      # responsibility — nginx's `no-cache` on *.css/*.js still applies.
+      - ../goose_snake:/usr/share/nginx/html/games/gooooose:ro
     depends_on:
       - backend
 
