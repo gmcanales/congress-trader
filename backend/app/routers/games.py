@@ -16,7 +16,7 @@ import re
 import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -57,8 +57,11 @@ def is_clean(name: str) -> bool:
 
 
 class ScoreIn(BaseModel):
-    game: str
-    name: str
+    # max_length rejects oversized input with a 422 before any processing. The
+    # values are clamped harder downstream (game slug regex, name -> [A-Z0-9]<=5),
+    # but bounding here is cheap defense-in-depth against multi-MB request bodies.
+    game: str = Field(max_length=32)
+    name: str = Field(max_length=64)
     score: int
 
     @field_validator("score")

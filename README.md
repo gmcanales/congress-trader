@@ -150,6 +150,7 @@ frontend/               static HTML/CSS + vanilla JS + D3 v7
 docs/
   decision_log.md         chronological narrative — read this first
   v2_leadership_plan.md   v2 scope, schema, sequencing
+  hardening.md            public vs gated surface; /public_api + rate limits
 reports/                generated HTML backtest reports
 docker-compose.yml
 CLAUDE.md               live project doc / architecture spec
@@ -163,6 +164,9 @@ CLAUDE.md               live project doc / architecture spec
   order, with cross-references to commits and AnalysisRun ids.
 - **[docs/v2_leadership_plan.md](docs/v2_leadership_plan.md)** — v2 scope
   and the schema decisions behind it.
+- **[docs/hardening.md](docs/hardening.md)** — how the public leaderboard
+  (`/public_api/*`) is separated from the CF-Access-gated surface, the
+  per-game posting key, and the nginx rate-limit configuration.
 - **[reports/](reports/)** (latest dated file) — current canonical
   findings with embedded Plotly charts.
 
