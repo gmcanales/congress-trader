@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Date, DateTime,
-    Float, Boolean, ForeignKey, UniqueConstraint,
+    Float, Boolean, ForeignKey, UniqueConstraint, Index,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -266,4 +266,25 @@ class PartyControl(Base):
 
     __table_args__ = (
         UniqueConstraint("chamber", "congress", name="uq_party_control_congress"),
+    )
+
+
+class LeaderboardScore(Base):
+    """Arcade high-score entry, shared across every Goosebase game. The `game`
+    column namespaces entries so a single table backs all games' leaderboards —
+    adding a new game needs no schema change, just a new slug. Scores are
+    submitted by the (client-side) game, so they are trusted only loosely:
+    names are sanitized and scores range-checked, but full anti-cheat isn't a
+    goal here."""
+    __tablename__ = "leaderboard_scores"
+
+    id = Column(Integer, primary_key=True)
+    game = Column(String, nullable=False)          # slug, e.g. "gooooose"
+    name = Column(String, nullable=False)          # uppercase alnum, <= 5 chars
+    score = Column(Integer, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        # Top-N-per-game query: WHERE game = ? ORDER BY score DESC.
+        Index("ix_leaderboard_game_score", "game", "score"),
     )

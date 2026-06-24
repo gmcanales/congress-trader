@@ -15,7 +15,7 @@ from app.database import engine, Base, SessionLocal
 from app import models
 from app.routers import (
     members, transactions, prices, scraper, model, datasets,
-    recommendations, holdings, assets, landing, me,
+    recommendations, holdings, assets, landing, me, games,
 )
 from app.services import snapshot as snapshot_service
 
@@ -139,6 +139,9 @@ app.include_router(assets.reports_router, prefix=prefix)
 app.include_router(assets.docs_router, prefix=prefix)
 app.include_router(landing.router, prefix=prefix)
 app.include_router(me.router, prefix=prefix)
+# Public, unauthenticated surface — mounted OUTSIDE api_prefix so it isn't
+# covered by the Cloudflare Access gate on /api/*. See routers/games.py.
+app.include_router(games.router, prefix=settings.public_api_prefix)
 
 
 @app.get("/health")
