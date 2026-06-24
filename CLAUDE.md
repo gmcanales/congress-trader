@@ -62,6 +62,13 @@ try `https://goosebase.org/cdn-cgi/trace` as a CF-only liveness check.
 
 The NUC database (`db.internal.example:5432`) remains LAN-only.
 
+**Public leaderboard (`/public_api/`).** The arcade games use a separate URL
+prefix that CF Access does *not* gate. Reads (`GET /public_api/games/leaderboard`)
+are open; writes require an `X-Game-Key` header whose value must match
+`GAME_POST_KEYS` in `.env` (forwarded into the container via `docker-compose.yml`).
+Three-layer nginx rate limiting throttles the public surface — see
+[`docs/hardening.md`](docs/hardening.md) for the full design.
+
 ### NUC deployment (live as of 2026-05-23)
 
 Backend, frontend, and cloudflared now run on the NUC. The dev box can
@@ -184,6 +191,7 @@ Status: **v2 complete (null), v2.5 spouse-cut complete (suggestive).** See
 ```
 backend/app/main.py            FastAPI app, router wiring, migrations + views applier
 backend/app/models.py          SQLAlchemy models
+backend/app/routers/games.py   public leaderboard API — mounted under /public_api/ (NOT gated by CF Access)
 backend/app/routers/           members, transactions, prices, scraper, model, datasets
 backend/app/services/          scraper, senate_scraper, ptr_parser, ocr, price_service, backtest
 backend/sql/migrations.sql     idempotent schema migrations (applied on startup)

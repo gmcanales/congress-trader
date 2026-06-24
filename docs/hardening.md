@@ -170,6 +170,10 @@ games sharing the prefix.
 ```bash
 # On the NUC, in ~/congress_trader/
 #   1. Add the GAME_POST_KEYS line to .env (see §4).
+#      IMPORTANT: .env alone is not enough — docker-compose passes env vars
+#      through an explicit `environment:` block. GAME_POST_KEYS (and
+#      CF_USER_DISPLAY_NAMES) are now forwarded in docker-compose.yml; if you
+#      add a new var to .env, add a matching line there too.
 #   2. Backend code + nginx.conf changed, so rebuild both:
 docker compose up -d --build backend frontend
 #   3. The leaderboard_scores table is created by Base.metadata.create_all

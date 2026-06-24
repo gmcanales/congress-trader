@@ -28,6 +28,9 @@ services:
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       CF_ACCESS_DEV_USER: ${CF_ACCESS_DEV_USER:-}
+      CF_USER_DISPLAY_NAMES: ${CF_USER_DISPLAY_NAMES:-}
+      # Public leaderboard posting keys — see docs/hardening.md §4
+      GAME_POST_KEYS: ${GAME_POST_KEYS:-}
     volumes:
       # Read-only mounts so the API can list/serve generated reports and project docs
       - ./reports:/reports:ro
