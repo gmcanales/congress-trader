@@ -53,6 +53,7 @@ services:
       # files on each request). Cache busting is the sibling repo's
       # responsibility — nginx's `no-cache` on *.css/*.js still applies.
       - ../goose_snake:/usr/share/nginx/html/games/gooooose:ro
+      - ../oiligarchy:/usr/share/nginx/html/games/oiligarchy:ro
     depends_on:
       - backend
 
