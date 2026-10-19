@@ -15,6 +15,12 @@
   const cacheTag      = document.getElementById('rec-cache-tag');
   const refreshCacheBtn = document.getElementById('rec-refresh-cache');
 
+  // Data-freshness banner
+  const freshEl       = document.getElementById('rec-freshness');
+  const freshHeadline = freshEl.querySelector('.freshness-headline');
+  const freshDetail   = freshEl.querySelector('.freshness-detail');
+  const freshMeta     = freshEl.querySelector('.freshness-meta');
+
   const openTbody     = document.getElementById('rec-open-tbody');
   const holdTbody     = document.getElementById('rec-hold-tbody');
   const closeTbody    = document.getElementById('rec-close-tbody');
@@ -128,6 +134,20 @@
     return Math.round((a - b) / (1000 * 60 * 60 * 24));
   };
 
+  const esc = s => String(s ?? '').replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Parse as UTC parts rather than `new Date(iso)` so a YYYY-MM-DD never
+  // shifts a day in negative-offset timezones.
+  function fmtDate(iso, withYear = true) {
+    if (!iso) return '—';
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return iso;
+    return `${MONTH[m - 1]} ${d}${withYear ? ', ' + y : ''}`;
+  }
+
   function setStatus(msg, kind = '') {
     statusEl.textContent = msg;
     statusEl.className = `scrape-status ${kind}`.trim();
@@ -152,10 +172,11 @@
     window.addEventListener('resize', () => {
       if (lastStratData) drawStrategyChart(lastStratData);
     });
+    loadFreshness();
     loadStrategyChart();
     loadHoldings();
     loadFooterLinks();
-    runRecs(); // pre-load today's recs (will hit the cache once it's warm)
+    runRecs(); // pre-load today's recs (served from the daily snapshot cache)
   }
 
   // ── reports + docs footer ─────────────────────────────────────────────────
@@ -244,6 +265,7 @@
       setTimeout(async () => {
         try {
           await runRecs();
+          loadFreshness();   // snapshot timestamp in the banner moved too
           setStatus('Cache refreshed.', 'ok');
         } finally {
           refreshCacheBtn.disabled = false;
@@ -255,21 +277,87 @@
     }
   }
 
-  function renderCacheTag(cache) {
-    if (!cache) {
+  // ── data-freshness banner ─────────────────────────────────────────────────
+  // Thresholds are about the disclosure regime, not arbitrary: the STOCK Act
+  // gives filers up to 45 days to report, and filings arrive in bursts, so a
+  // week of quiet is normal and a month of it means ingestion is probably
+  // broken rather than Congress being idle.
+  function freshnessAgeClass(days) {
+    if (days === null || days === undefined) return 'age-unknown';
+    if (days <= 7) return 'age-fresh';
+    if (days <= 30) return 'age-aging';
+    return 'age-stale';
+  }
+
+  function renderFreshness(f) {
+    const days = f.latest_filing_days_ago;
+    freshEl.className = `freshness-banner ${freshnessAgeClass(days)}`;
+
+    const ago = days === null || days === undefined ? ''
+      : days === 0 ? ' (today)'
+      : days === 1 ? ' (yesterday)'
+      : ` (${days} days ago)`;
+    freshHeadline.innerHTML =
+      `Disclosures current through <b>${fmtDate(f.latest_filing_date)}</b>${ago}`;
+
+    const t = f.last_trade;
+    if (t) {
+      const kind = /sale|sell/i.test(t.transaction_type || '') ? 'sell' : 'buy';
+      // chamber comes out of the DB lowercase ('house' / 'senate').
+      const chamber = t.chamber ? t.chamber[0].toUpperCase() + t.chamber.slice(1) : null;
+      const who = [t.party, chamber].filter(Boolean).join(', ');
+      freshDetail.innerHTML =
+        `Last recorded trade: <span class="fresh-side ${kind}">`
+        + `${esc((t.transaction_type || '').toUpperCase())}</span> `
+        + `<b>${esc(t.ticker || t.asset_name || '—')}</b> — `
+        + `${esc(t.member_name)}${who ? ` <span class="muted">(${esc(who)})</span>` : ''}, `
+        + `traded ${fmtDate(t.transaction_date, false)}, filed ${fmtDate(t.filing_date, false)}`;
+    } else {
+      freshDetail.textContent = 'No disclosed trades in the database yet.';
+    }
+
+    const bits = [];
+    if (f.n_transactions) bits.push(`${f.n_transactions.toLocaleString()} disclosed trades`);
+    if (f.latest_price_bar_date) bits.push(`prices thru ${fmtDate(f.latest_price_bar_date, false)}`);
+    if (f.snapshot && f.snapshot.created_at) {
+      bits.push(`recs built ${f.snapshot.created_at.slice(0, 16).replace('T', ' ')}`);
+    }
+    freshMeta.textContent = bits.join(' · ');
+  }
+
+  async function loadFreshness() {
+    try {
+      renderFreshness(await API.getDataFreshness());
+    } catch (e) {
+      freshEl.className = 'freshness-banner age-unknown';
+      freshHeadline.textContent = 'Could not load data freshness';
+      freshDetail.textContent = e.message;
+      freshMeta.textContent = '';
+    }
+  }
+
+  function renderCacheTag(data) {
+    const cache = data && data.cache;
+    if (!cache || !cache.hit) {
       cacheTag.className = 'cache-tag cache-live';
       cacheTag.textContent = 'live compute';
+      cacheTag.title = 'Computed on request — no pre-built snapshot matched.';
       return;
     }
-    if (cache.hit && cache.stale) {
+    const built = (cache.created_at || '').slice(0, 16).replace('T', ' ');
+    if (cache.stale) {
+      // The daily job hadn't written a snapshot for the requested date, so
+      // we served the most recent one. Name the date we actually served —
+      // "stale" on its own leaves the reader guessing by how much.
       cacheTag.className = 'cache-tag cache-stale';
-      cacheTag.textContent = `cached · stale · ${(cache.created_at || '').slice(0, 16).replace('T', ' ')}`;
-    } else if (cache.hit) {
-      cacheTag.className = 'cache-tag cache-hit';
-      cacheTag.textContent = `cached · ${(cache.created_at || '').slice(0, 16).replace('T', ' ')}`;
+      cacheTag.textContent = `cached ${data.as_of} · built ${built}`;
+      cacheTag.title = data.as_of_requested
+        ? `No snapshot for ${data.as_of_requested} yet — showing ${data.as_of}.`
+        : 'Showing the most recent available snapshot.';
     } else {
-      cacheTag.className = 'cache-tag cache-live';
-      cacheTag.textContent = 'live compute';
+      cacheTag.className = 'cache-tag cache-hit';
+      cacheTag.textContent = `cached · built ${built}`;
+      cacheTag.title = `Snapshot for ${data.as_of}, written by the daily job.`;
     }
   }
 
@@ -335,8 +423,17 @@
   }
 
   async function runRecs() {
-    setStatus('Computing recommendations…');
+    setStatus('Loading recommendations…');
     goBtn.disabled = true;
+    // A cached snapshot comes back in milliseconds. Anything still pending
+    // after a beat means we missed the cache and the backend is doing a full
+    // live recompute (~75s) — say so, rather than leaving the reader watching
+    // a status line that looks hung.
+    const slowTimer = setTimeout(() => {
+      setStatus('No pre-built snapshot for this configuration — computing '
+        + 'live, which takes ~75s. The daily 6am-ET job pre-builds the '
+        + 'default 14-day window for each profile.');
+    }, 2500);
     try {
       const params = {
         as_of: asOfInput.value,
@@ -344,9 +441,10 @@
         new_window_days: parseInt(windowInput.value) || 14,
       };
       const data = await API.getRecommendations(params);
+      clearTimeout(slowTimer);
       lastRecData = data;
       renderConfig(data);
-      renderCacheTag(data.cache);
+      renderCacheTag(data);
       renderOpen(data.open, data.as_of);
       renderHold(data.holding);
       renderClose(data.close);
@@ -368,6 +466,7 @@
       console.error(e);
       setStatus(`Error: ${e.message}`, 'error');
     } finally {
+      clearTimeout(slowTimer);
       goBtn.disabled = false;
     }
   }

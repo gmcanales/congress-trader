@@ -252,6 +252,19 @@
   <section id="recs-view" class="analysis-view hidden">
     <div class="analysis-inner">
 
+      <!-- Data-freshness banner. Every number further down this page is
+           derived from disclosures that lag the actual trades, so lead with
+           how current the underlying data actually is. Filled by
+           loadFreshness() in js/recommendations.js. -->
+      <div id="rec-freshness" class="freshness-banner age-unknown">
+        <span class="freshness-dot" aria-hidden="true"></span>
+        <div class="freshness-body">
+          <div class="freshness-headline">Checking data freshness…</div>
+          <div class="freshness-detail"></div>
+        </div>
+        <div class="freshness-meta"></div>
+      </div>
+
       <div class="panel">
         <div class="panel-head">
           <h3>Your Portfolio <span id="port-count" class="tx-count"></span></h3>

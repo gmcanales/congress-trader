@@ -4,6 +4,11 @@ Recommendation endpoint.
   GET /api/recommendations/profiles
       → list available risk profiles + their underlying strategy configs
 
+  GET /api/recommendations/freshness
+      → how current the underlying data is (last recorded trade, latest
+        filing / price-bar dates, newest snapshot). Drives the freshness
+        banner at the top of the Recommendations page.
+
   GET /api/recommendations?as_of=YYYY-MM-DD&risk_profile=conservative
       → today's recommendations (open / holding / close) for the chosen
         risk profile. `as_of` defaults to today.
@@ -18,6 +23,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Query
+from sqlalchemy import func
 
 from app.services.recommendations import (
     compute_recommendations, list_risk_profiles, get_strategy_comparison,
@@ -79,6 +85,84 @@ def refresh_cache(background_tasks: BackgroundTasks):
     return {"queued": True}
 
 
+@router.get("/freshness")
+def data_freshness():
+    """Data-recency summary for the banner at the top of the Recommendations
+    page, so a reader can tell at a glance how current the underlying
+    disclosures are.
+
+    Deliberately NOT cached: every field is a MAX() or a LIMIT 1 lookup, and
+    the whole point is to describe how stale the *data* is — a cached answer
+    to that question couldn't stay honest.
+    """
+    today = date.today()
+    db = SessionLocal()
+    try:
+        latest_filing = db.query(func.max(models.Transaction.filing_date)).scalar()
+
+        # Clamp to today. A handful of PTR parses yield garbage years (there
+        # are rows dated 2225-04-04 and 2202-09-19 in the table), and an
+        # unclamped MAX() would headline the banner with one of them.
+        latest_tx = (
+            db.query(func.max(models.Transaction.transaction_date))
+            .filter(models.Transaction.transaction_date <= today)
+            .scalar()
+        )
+
+        # The single most recently disclosed trade — filing_date is the
+        # actionable anchor, so "last recorded trade" means last *filed*.
+        last = (
+            db.query(models.Transaction, models.Member)
+            .join(models.Member, models.Transaction.member_id == models.Member.id)
+            .filter(models.Transaction.filing_date == latest_filing,
+                    models.Transaction.transaction_date <= today)
+            .order_by(models.Transaction.transaction_date.desc(),
+                      models.Transaction.id.desc())
+            .first()
+        )
+        last_trade = None
+        if last is not None:
+            tx, member = last
+            last_trade = {
+                "ticker": tx.ticker,
+                "asset_name": tx.asset_name,
+                "transaction_type": tx.transaction_type,
+                "transaction_date": tx.transaction_date.isoformat(),
+                "filing_date": tx.filing_date.isoformat() if tx.filing_date else None,
+                "owner": tx.owner,
+                "member_name": f"{member.first_name} {member.last_name}".strip(),
+                "party": member.party,
+                "chamber": member.chamber,
+                "filer_type": member.filer_type,
+            }
+
+        latest_price = db.query(func.max(models.PriceBar.date)).scalar()
+
+        latest_snapshot = (
+            db.query(models.RecommendationSnapshot)
+            .order_by(models.RecommendationSnapshot.as_of.desc(),
+                      models.RecommendationSnapshot.created_at.desc())
+            .first()
+        )
+
+        return {
+            "as_of": today.isoformat(),
+            "latest_filing_date": latest_filing.isoformat() if latest_filing else None,
+            "latest_filing_days_ago": (today - latest_filing).days if latest_filing else None,
+            "latest_transaction_date": latest_tx.isoformat() if latest_tx else None,
+            "latest_price_bar_date": latest_price.isoformat() if latest_price else None,
+            "n_transactions": db.query(func.count(models.Transaction.id)).scalar(),
+            "last_trade": last_trade,
+            "snapshot": {
+                "as_of": latest_snapshot.as_of.isoformat(),
+                "created_at": (latest_snapshot.created_at.isoformat()
+                               if latest_snapshot.created_at else None),
+            } if latest_snapshot else None,
+        }
+    finally:
+        db.close()
+
+
 @router.get("/strategies")
 def strategies(
     band_window: int = Query(21, ge=2, le=252,
@@ -126,11 +210,20 @@ def get_recommendations(
                           new_window_days=new_window_days)
         if hit is not None:
             return hit
-        # No exact-day snapshot; if user asked for today, fall back to the
-        # latest cached snapshot so the page still loads fast. Mark stale.
-        if as_of == date.today() and new_window_days is None:
-            stale = get_latest_for_profile(risk_profile)
+        # No exact-day snapshot; if the caller wants today (or later), fall
+        # back to the freshest snapshot in the same window slot so the page
+        # still loads instantly. Mark stale.
+        #
+        # The window is resolved inside get_latest_for_profile, so an explicit
+        # `new_window_days` equal to the profile default still hits here. That
+        # matters: the UI *always* sends new_window_days (14 by default), so
+        # the previous `new_window_days is None` guard made every UI load miss
+        # this path and pay a ~75s live compute — every day between midnight
+        # ET and the 6am-ET cron, and all day whenever the cron failed.
+        if as_of >= date.today():
+            stale = get_latest_for_profile(risk_profile, new_window_days)
             if stale is not None:
+                stale["as_of_requested"] = as_of.isoformat()
                 return stale
 
     result = compute_recommendations(

@@ -46,6 +46,7 @@ const API = (() => {
     runAnalysis: (payload) => post('/model/run', payload),
     getRecommendationProfiles: () => get('/recommendations/profiles'),
     getRecommendations: (params) => get('/recommendations/', params),
+    getDataFreshness: () => get('/recommendations/freshness'),
     getCacheStatus: () => get('/recommendations/cache'),
     refreshCache: () => post('/recommendations/refresh', {}),
     getStrategyComparison: (params) => get('/recommendations/strategies', params),

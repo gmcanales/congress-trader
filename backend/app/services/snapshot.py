@@ -151,15 +151,23 @@ def refresh_all_profiles(as_of: Optional[date] = None) -> dict:
     return results
 
 
-def get_latest_for_profile(risk_profile: str) -> Optional[dict]:
+def get_latest_for_profile(risk_profile: str,
+                           new_window_days: Optional[int] = None) -> Optional[dict]:
     """Return the freshest cached payload for a profile, regardless of as_of.
     Used as a fallback when the user asks for `today` but no snapshot for
-    today exists yet."""
+    today exists yet.
+
+    Scoped to the caller's *resolved* window slot: handing a 14-day-window
+    snapshot to someone who asked for 30 would silently answer a different
+    question than the one they asked.
+    """
+    window = _window_for(risk_profile, new_window_days)
     db = SessionLocal()
     try:
         row = (
             db.query(models.RecommendationSnapshot)
-            .filter(models.RecommendationSnapshot.risk_profile == risk_profile)
+            .filter(models.RecommendationSnapshot.risk_profile == risk_profile,
+                    models.RecommendationSnapshot.new_window_days == window)
             .order_by(models.RecommendationSnapshot.as_of.desc(),
                       models.RecommendationSnapshot.created_at.desc())
             .first()
