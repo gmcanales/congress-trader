@@ -71,6 +71,10 @@ def main() -> None:
     p.add_argument("--owner-filter",
                    choices=list(backtest.OWNER_FILTERS), default="any",
                    help="restrict by who held the asset: any | self | spouse_or_joint | spouse_only | joint_only | dependent")
+    p.add_argument("--visibility",
+                   choices=list(backtest.visibility_svc.VISIBILITY_CHOICES), default="any",
+                   help="restrict by how much public attention the name had at the time: "
+                        "any | high (household names) | low (names nobody writes about)")
     p.add_argument("--filer-types", type=lambda s: s.split(","), default=None,
                    help="comma-sep list of filer types: member,executive. Default = all.")
     p.add_argument("--output", help="path to write the full result JSON")
@@ -82,7 +86,7 @@ def main() -> None:
 
     print(f"Analysis  anchor={args.date_field}  benchmark={args.benchmark}"
           f"  bench_mode={args.benchmark_mode}  leadership_only={args.leadership_only}"
-          f"  owner_filter={args.owner_filter}")
+          f"  owner_filter={args.owner_filter}  visibility={args.visibility}")
     print(f"  train {args.train_start}..{args.train_end}"
           f"  |  test {args.test_start}..{args.test_end}")
     print(f"  grid: {len(param_grid)} configs  |  event horizons: {args.event_horizons}")
@@ -93,6 +97,7 @@ def main() -> None:
         benchmark=args.benchmark, leadership_only=args.leadership_only,
         benchmark_mode=args.benchmark_mode,
         owner_filter=args.owner_filter,
+        visibility=args.visibility,
         filer_types=args.filer_types,
     )
 

@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import SessionLocal
 from app.services import symbols
+from app.services import visibility as visibility_svc
 from app import models
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,41 @@ def _apply_owner_filter(q, owner_filter: str):
     if owner_filter == "dependent":
         return q.filter(t.owner == "DC")
     raise ValueError(f"unknown owner_filter: {owner_filter!r} (expected one of {OWNER_FILTERS})")
+
+
+def _apply_visibility(q, visibility: str, date_col,
+                      high_pct: float = visibility_svc.DEFAULT_HIGH_PCT):
+    """Restrict events by how much public attention the name had *at the time*.
+
+    'high' keeps household names (top `high_pct` of cross-sectional median
+    daily dollar volume), 'low' keeps everything else; 'any' is a no-op.
+    See services/visibility.py for why dollar volume and not market cap.
+
+    The subquery resolves against the latest month strictly before the event
+    month, so a name is judged by what it was when the trade became public
+    rather than by what it later became. Tickers with no visibility row yet
+    (no price history at that point) are excluded from both tiers rather
+    than defaulted into 'low' — unclassifiable is not the same as obscure,
+    and defaulting would quietly stuff the low tier with unpriceable junk.
+    """
+    if visibility == "any":
+        return q
+    if visibility not in visibility_svc.VISIBILITY_CHOICES:
+        raise ValueError(f"unknown visibility: {visibility!r} "
+                         f"(expected one of {visibility_svc.VISIBILITY_CHOICES})")
+
+    t = models.Transaction
+    pct = (
+        select(models.TickerVisibility.pct_rank)
+        .where(models.TickerVisibility.ticker == t.ticker)
+        .where(models.TickerVisibility.as_of < func.date_trunc("month", date_col))
+        .order_by(models.TickerVisibility.as_of.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    if visibility == "high":
+        return q.filter(pct >= high_pct)
+    return q.filter(pct < high_pct)
 
 # GICS top-level sector → SPDR sector ETF used for sector-neutral excess return.
 # These are the well-known SPDR sector funds that closely track GICS sectors.
@@ -442,6 +478,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
                 leadership_only: bool = False,
                 benchmark_mode: str = "ticker",
                 owner_filter: str = "any",
+                visibility: str = "any",
                 filer_types: list[str] | None = None) -> dict:
     """Mean excess return after congressional buys vs sells, by horizon & chamber.
 
@@ -481,6 +518,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
         if leadership_only:
             q = q.filter(_leadership_exists_filter())
         q = _apply_owner_filter(q, owner_filter)
+        q = _apply_visibility(q, visibility, date_col)
         q = _apply_filer_types(q, filer_types)
         rows = q.all()
         tickers = {r.ticker for r in rows}
@@ -552,6 +590,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             "benchmark_mode": benchmark_mode,
             "leadership_only": leadership_only,
             "owner_filter": owner_filter,
+            "visibility": visibility,
             "filer_types": filer_types,
             "events_total": len(rows),
             "events_missing_price": missing_price,
@@ -573,6 +612,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                    trailing_stop_pct: float = 0.15,
                    time_stop_days: int = 252,
                    owner_filter: str = "any",
+                   visibility: str = "any",
                    filer_types: list[str] | None = None) -> dict:
     """Simulate an equal-weight 'follow the buys' portfolio vs a benchmark.
 
@@ -623,6 +663,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             exit_policy=exit_policy,
             trailing_stop_mode=MIRROR_POLICIES[exit_policy],
             owner_filter=owner_filter,
+            visibility=visibility,
             filer_types=filer_types,
         )
     elif exit_policy != "fixed_horizon":
@@ -648,6 +689,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
         if leadership_only:
             q = q.filter(_leadership_exists_filter())
         q = _apply_owner_filter(q, owner_filter)
+        q = _apply_visibility(q, visibility, date_col)
         q = _apply_filer_types(q, filer_types)
         rows = q.order_by(date_col).all()
         tickers = {r.ticker for r in rows}
@@ -750,6 +792,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
                        "benchmark_mode": benchmark_mode,
                        "leadership_only": leadership_only,
                        "owner_filter": owner_filter,
+                       "visibility": visibility,
                        "filer_types": filer_types,
                        "exit_policy": "fixed_horizon"},
             "positions_opened": positions,
@@ -828,6 +871,7 @@ def _rules_backtest_mirror(start: date, end: date, *,
                             exit_policy: str,
                             trailing_stop_mode: str,
                             owner_filter: str = "any",
+                            visibility: str = "any",
                             filer_types: list[str] | None = None) -> dict:
     """Per-(member, ticker, entry) position simulator with signal-driven
     exits. See `rules_backtest` for the public interface and the precise
@@ -1082,6 +1126,7 @@ def _rules_backtest_mirror(start: date, end: date, *,
                 "benchmark": benchmark, "benchmark_mode": benchmark_mode,
                 "leadership_only": leadership_only,
                 "owner_filter": owner_filter,
+                "visibility": visibility,
                 "filer_types": filer_types,
                 "exit_policy": exit_policy,
                 "trailing_stop_mode": trailing_stop_mode,
@@ -1133,6 +1178,7 @@ def train_test_analysis(train_start: date, train_end: date,
                         trailing_stop_pct: float = 0.15,
                         time_stop_days: int = 252,
                         owner_filter: str = "any",
+                        visibility: str = "any",
                         filer_types: list[str] | None = None) -> dict:
     """Grid-search the strategy on the training years, then evaluate the single
     best configuration once on the held-out test year. The test period is
@@ -1143,11 +1189,13 @@ def train_test_analysis(train_start: date, train_end: date,
     es_train = event_study(train_start, train_end, date_field, horizons,
                            benchmark=benchmark, leadership_only=leadership_only,
                            benchmark_mode=benchmark_mode,
-                           owner_filter=owner_filter, filer_types=filer_types)
+                           owner_filter=owner_filter,
+                           visibility=visibility, filer_types=filer_types)
     es_test = event_study(test_start, test_end, date_field, horizons,
                           benchmark=benchmark, leadership_only=leadership_only,
                           benchmark_mode=benchmark_mode,
-                          owner_filter=owner_filter, filer_types=filer_types)
+                          owner_filter=owner_filter,
+                          visibility=visibility, filer_types=filer_types)
 
     grid = []
     for params in param_grid:
@@ -1161,6 +1209,7 @@ def train_test_analysis(train_start: date, train_end: date,
                                               trailing_stop_pct=trailing_stop_pct,
                                               time_stop_days=time_stop_days,
                                               owner_filter=owner_filter,
+                                              visibility=visibility,
                                               filer_types=filer_types,
                                               **params)})
 
@@ -1175,6 +1224,7 @@ def train_test_analysis(train_start: date, train_end: date,
                                    trailing_stop_pct=trailing_stop_pct,
                                    time_stop_days=time_stop_days,
                                    owner_filter=owner_filter,
+                                   visibility=visibility,
                                    filer_types=filer_types,
                                    **best["params"])
 
@@ -1191,6 +1241,7 @@ def train_test_analysis(train_start: date, train_end: date,
         "benchmark_mode": benchmark_mode,
         "leadership_only": leadership_only,
         "owner_filter": owner_filter,
+        "visibility": visibility,
         "filer_types": filer_types,
         "exit_policy": exit_policy,
         "trailing_stop_pct": trailing_stop_pct,

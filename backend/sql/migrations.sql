@@ -69,3 +69,27 @@ CREATE INDEX IF NOT EXISTS ix_tickers_price_status ON tickers(price_status);
 -- it on every run forever. Recording the request lets us ask once.
 ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_window_start DATE;
 ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_window_end   DATE;
+
+-- Per-month attention proxy, used by the engine's `visibility` filter to
+-- separate household names from names nobody writes about.
+--
+-- Dollar volume rather than market cap or turnover. Market cap misses the
+-- distinction entirely (Eaton and Parker Hannifin are ~$100B industrials
+-- that never make the news), and turnover inverts it (mega-caps churn
+-- *less* relative to their size, which ranked GOOGL below Medpace). Daily
+-- dollar volume is how much money actually moves through a name, which
+-- tracks attention: on recent data the p95 cut puts MU/NVDA/GOOGL/TSLA
+-- above and ETN/PH/MEDP below.
+--
+-- Stored per month and ranked cross-sectionally *within* that month so a
+-- trade is classified by what the name looked like at the time, not by what
+-- it became. Consumers must join to a month strictly before the filing
+-- date — see services/visibility.py.
+CREATE TABLE IF NOT EXISTS ticker_visibility (
+    ticker   TEXT NOT NULL,
+    as_of    DATE NOT NULL,              -- first day of the covered month
+    adv      DOUBLE PRECISION,           -- smoothed median daily dollar volume
+    pct_rank DOUBLE PRECISION,           -- cross-sectional percentile [0,1]
+    PRIMARY KEY (ticker, as_of)
+);
+CREATE INDEX IF NOT EXISTS ix_ticker_visibility_as_of ON ticker_visibility(as_of);

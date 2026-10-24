@@ -300,3 +300,19 @@ class LeaderboardScore(Base):
         # Top-N-per-game query: WHERE game = ? ORDER BY score DESC.
         Index("ix_leaderboard_game_score", "game", "score"),
     )
+
+
+class TickerVisibility(Base):
+    """Monthly attention proxy per ticker — see services/visibility.py.
+
+    `pct_rank` is the cross-sectional percentile of smoothed median daily
+    dollar volume *within that month*, so it says what a name looked like at
+    the time rather than what it became. Consumers join to a month strictly
+    before the filing date.
+    """
+    __tablename__ = "ticker_visibility"
+
+    ticker = Column(String, primary_key=True)
+    as_of = Column(Date, primary_key=True)      # first day of covered month
+    adv = Column(Float)                          # median daily dollar volume
+    pct_rank = Column(Float, index=True)
