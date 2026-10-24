@@ -1283,6 +1283,73 @@ post-2026-10 result as "congressional."**
 
 ---
 
+### 6.7 Re-run on the deduplicated universe (2026-10-24, runs #72-74)
+
+**Why.** §6.6's dedupe removed 1,194 of 13,290 ticker-bearing rows (9.0%).
+Runs #69-71 were computed before it, so the visibility comparison was re-run
+unchanged on the corrected universe.
+
+**Rules-engine result moves up across the board.**
+
+| tier | run | train excess | OOS excess | | run | train excess | OOS excess | ΔOOS |
+|---|---|---|---|---|---|---|---|---|
+| high | #69 | +25.12% | +8.14% | → | #72 | +24.14% | **+11.57%** | +3.43pp |
+| low | #70 | −32.46% | +0.71% | → | #73 | −27.49% | **+2.88%** | +2.17pp |
+| any | #71 | −18.09% | +4.42% | → | #74 | −15.54% | **+6.62%** | +2.20pp |
+
+The ordering survives (high > any > low), so the qualitative read of §6.5
+stands. The magnitudes do not.
+
+**The per-trade event study is where the real damage is.** Buy @ 63d:
+
+| tier | | train n | train mean | t | test n | test mean | t |
+|---|---|---|---|---|---|---|---|
+| high | before | 805 | +0.20% | 0.31 | 274 | +2.41% | 2.03 |
+| high | after | 760 | −0.05% | −0.08 | 250 | +2.61% | **2.09** |
+| low | before | 2073 | −0.90% | **−2.36** | 506 | −0.10% | −0.13 |
+| low | after | 1972 | −0.75% | **−1.91** | 475 | +0.41% | 0.55 |
+| any | before | 2929 | −0.64% | **−2.00** | 790 | +0.76% | 1.19 |
+| any | after | 2778 | −0.60% | **−1.82** | 735 | +1.14% | 1.75 |
+
+**§6.5's headline claim is retracted.** It read: "the robust number is the
+training window, where low-visibility buys are significantly negative across
+four years (−0.90%, t=−2.36, n=2,073): niche congressional trades
+underperform." On the deduplicated universe that is **−0.75%, t=−1.91** and
+no longer clears the conventional threshold. The broad-universe train result
+drops below it too (−2.00 → −1.82). The effect was partly an artifact of
+counting the same trade more than once.
+
+**Why duplicates inflated significance — the generalisable point.** The
+t-statistic is mean / (sd / √n). A re-reported or repeated line item adds to
+n without adding an independent observation, so it shrinks the standard error
+while leaving the mean roughly unchanged. Classic pseudo-replication: the
+estimate barely moves and the confidence around it is fictitious.
+
+**This is not limited to the visibility work.** Every run before #72 — the
+v1 null, the v2 leadership cut, the v2.5 spouse cut, the v2.6 cabinet runs,
+and both Bayesian fits — was computed on the duplicated universe. Point
+estimates are largely unaffected (they barely moved here), but **every
+reported interval, t-statistic and posterior probability is too narrow.**
+The v2.5 `is_spouse_owned` posterior of P(β > 0) = 0.892 in particular was
+never credible at 95% and should be expected to weaken further on a re-fit.
+Re-fitting the Bayesian model on canonical rows is the obvious next step and
+is not yet done.
+
+**The high-visibility 2025 result remains fat-tailed and should not be read
+as an edge.** On the deduplicated data the test mean is +2.66% over 249
+trades, but the same five names carry it — INTC +86%, MSTR +57%, NVDA +49%,
+LLY +45%, TSLA +44%. Excluding the top 5 the mean is +1.56%; excluding the
+top 10, +0.76%. Ten of 249 trades carry roughly 70% of it. Combined with the
+single test year and the fact that "high visibility in 2025" closely tracks
+the AI/crypto momentum trade, the t = 2.09 is not evidence of congressional
+information.
+
+**Net read after the correction: no tier shows a credible effect.** The
+niche-underperformance finding was partly duplication; the household-name
+outperformance is a handful of momentum names in one year.
+
+---
+
 ### 6.1 Policy-event windows (roadmap, on deck)
 
 **Why.** Wei & Zhou's information-channel hypothesis predicts the
@@ -1365,6 +1432,9 @@ database). Tool `train_test_analysis` unless noted.
 | #69 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | **visibility=high** (p95 dollar-volume), filer_types=['member']; OOS excess **+8.14%** — fat-tailed, see §6.5 |
 | #70 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | **visibility=low**, filer_types=['member']; OOS excess +0.71%; train −32.46% (t=−2.36 per-trade) |
 | #71 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | visibility=any baseline, filer_types=['member']; OOS excess +4.42% |
+| #72 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | **visibility=high, DEDUPLICATED** (§6.6); OOS excess +11.57%; test t=2.09 but fat-tailed |
+| #73 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | **visibility=low, DEDUPLICATED**; OOS +2.88%; train t=−1.91 — §6.5's "significant" result does not survive |
+| #74 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | visibility=any baseline, DEDUPLICATED; OOS +6.62%; train t=−1.82 |
 
 ---
 

@@ -302,16 +302,27 @@ docker-compose.yml  .env
   persistence + Bayesian re-fit with cabinet rows is §6.4 in the
   decision log, in progress. See [`docs/decision_log.md §6.3`](docs/decision_log.md) for
   the full ingest writeup.
-- **Visibility finding (2026-10-24, runs #69–71):** new engine parameter
+- **⚠ Every run before #72 used a duplicated universe.** The dedupe in
+  `decision_log.md §6.6` removed 9.0% of ticker-bearing rows (re-reported
+  amendments and repeated line items). Duplicate rows inflate `n` without
+  adding independent observations, so **point estimates are largely fine but
+  every t-statistic, interval and posterior probability from runs #1–71 is
+  too narrow.** The v2.5 `is_spouse_owned` posterior (P(β > 0) = 0.892) and
+  the v2 leadership fit both need re-fitting on canonical rows — not yet
+  done. See `§6.7`.
+- **Visibility finding (2026-10-24, runs #69–71; superseded by #72–74):** new engine parameter
   `visibility ∈ (any, high, low)`, splitting names by point-in-time median
   daily dollar volume (p95 cut; market cap and turnover both fail — see
   `decision_log.md §6.5`). The hypothesis that obscure names carry more
   information is **backwards**: low-visibility buys are significantly
-  negative across 2021–24 (−0.90%, t=−2.36, n=2,073), while high-visibility
-  2025 OOS excess is +8.14%. The 2025 number is *not* an edge — it is
-  fat-tailed (dropping 5 of 273 trades halves it), single-year, and "high
-  visibility" in 2025 nearly defines the AI/crypto momentum trade. A
-  momentum control in the Bayesian spec is the obvious next step.
+  negative across 2021–24. **On the deduplicated re-run (#72–74) that result
+  does not survive**: −0.75%, t=−1.91, below the conventional threshold, so
+  the "niche trades underperform" claim is retracted. High-visibility 2025
+  OOS excess is +11.57% deduplicated, but it is *not* an edge — ten of 249
+  trades carry ~70% of the mean (INTC, MSTR, NVDA, LLY, TSLA), it is a single
+  test year, and "high visibility in 2025" nearly defines the AI/crypto
+  momentum trade. Net read: **no tier shows a credible effect.** A momentum
+  control in the Bayesian spec is the obvious next step.
 - Known data gap: ~12% scanned/checkbox-grid filings parse poorly
   (deferred). Trump's 05/08/2026 (2) 278-T filing is OCR-garbled
   in its embedded text layer and would need re-OCR to recover its
