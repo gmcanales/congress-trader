@@ -244,7 +244,12 @@ docker-compose.yml  .env
   agreement POST returns an edge-level "Access Denied", so this is an
   access decision at the source, not a bug. House ingest is unaffected.
   Senate is 46% of congressional transactions, so the panel is
-  increasingly House-only going forward. See `decision_log.md §6.5`.
+  increasingly House-only going forward — **check the chamber mix before
+  calling a post-2026-10 result "congressional."** Working hypothesis is
+  an overbroad CDN bot rule rather than policy: nothing published forbids
+  automated access and nothing replaced it. Do not route around it; see
+  `decision_log.md §6.6` for the full diagnosis and the outreach decided
+  on instead.
 - **Price coverage**: 93.8% of disclosed-ticker transactions price.
   `services/symbols.py` resolves disclosed strings to vendor symbols
   (BRK.B → BRK-B, spin-off and placeholder cells, non-ticker rejection);

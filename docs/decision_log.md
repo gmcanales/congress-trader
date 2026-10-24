@@ -1178,6 +1178,111 @@ re-run through the API.
 
 ---
 
+### 6.6 Senate eFD access — investigation, and the decision not to route around it (2026-10-24)
+
+§6.5 recorded the Senate block as a bare fact. This is what it actually
+is, what was ruled out, and the decisions taken — including one
+deliberate *non*-action.
+
+**What the block is.** Not an application-level refusal and not (only)
+an IP ban:
+
+| Request | Result | Reading |
+|---|---|---|
+| `GET /search/home/` | 200, `server: gunicorn` | reaches the Django app normally |
+| `POST /search/home/` (agreement) | 403, Akamai `Access Denied` + reference # | stopped at the CDN edge |
+| `POST /search/report/data/` | 403, same | unreachable; the agreement gates it |
+
+The `server: gunicorn` header on the GET and its absence on the 403 is
+the diagnostic: the two requests are answered by different systems. Every
+search requires the agreement POST, so the effect is total for any
+non-browser client.
+
+**Ruled out — CSRF handling.** The first hypothesis was our own bug:
+Django rotates the CSRF token on POST and `senate_scraper._authed_client`
+reuses the token scraped from the form. The token *does* rotate, but
+correcting it changes nothing, because the POST never reaches Django.
+Not our bug.
+
+**Ruled out — datacenter-IP reputation, as a complete explanation.** The
+most-cited community claim is that Akamai blocks datacenter ranges
+([senate-efd-relay](https://github.com/Codejrangel/senate-efd-relay)).
+Our egress is residential Comcast (AS7922) with no VPN — `nordvpnd`
+inactive, no tunnel interfaces — and we are still blocked on the POST,
+while projects on datacenter hosts report 403 on the *GET*
+([Nova #1143](https://github.com/aaltaay/Nova/issues/1143)). The controls
+are layered; IP reputation is one layer, not the whole story.
+
+**Timeline, from four unrelated projects.**
+[rocket #69](https://github.com/jhonnyisaacc/rocket/issues/69) 2026-10-06
+(Akamai edge 403) · our last captured Senate filing 2026-10-07 ·
+[13FRadar #144](https://github.com/mustafakocer/13FRadar/issues/144)
+(agreement refused) · Nova #1143 2026-10-23.
+
+**No policy behind it, and no replacement.** `robots.txt` 404; `/api/`,
+`/api/v1/`, `/search/api/`, `/bulk/`, `/data/`, `/sitemap.xml`,
+`/openapi.json` all 404; no banner, Senate release, Ethics notice, or
+Federal Register item. The prohibition agreement quotes the Ethics in
+Government Act (5 U.S.C. app. §105(c)), which restricts the *purposes* a
+report may be obtained or used for — unlawful, commercial other than news
+media, credit rating, soliciting money — and says nothing about method.
+Nothing published forbids automated collection; nothing published offers
+an alternative to it.
+
+**Decision: do not circumvent.** TLS/JA3 fingerprint matching, UA
+rotation, and routing through hosts whose ranges are unblocked (GitHub
+Actions runners are reportedly not blocked) are all available and all
+rejected. A deliberate control signals intent whether or not a rule is
+written down. A diagnostic that cycled User-Agents was blocked by tooling
+policy as bot-check circumvention, correctly. The ingest tags 403/429 as
+`blocked` and keeps attempting in case it lifts; `INGEST_CHAMBERS=house`
+disables the chamber.
+
+**Decision: pursue supported access instead.** Tiered outreach packet
+drafted 2026-10-24 — Tier 1 the offices that own the system (Office of
+Public Records, Secretary of the Senate, Ethics Committee, Congressional
+Data Task Force), Tier 2 data-access advocates, Tier 3 STOCK Act
+watchdogs, Tier 4 press held in reserve.
+
+**Decision: do NOT lead with the §105(c) vendor-enforcement angle.**
+Tempting and rejected, for three reasons. (1) The statute exempts "news
+and communications media for dissemination to the general public," which
+a vendor with a public site and a newsroom can credibly claim — the
+hypocrisy case is weaker in law than it feels. (2) No vendor publishes
+its collection methodology, so asserting they scrape is unevidenced; they
+may license, use human review, or have an arrangement we don't know
+about. (3) Decisive: telling an institution "people are commercially
+exploiting this data" invites *tightening*, not opening. It argues
+against our own goal. The same underlying observation is kept, reframed
+as access equity — the control doesn't stop commercial access, it only
+stops the free and independent kind — which supports restoring access
+rather than restricting it. Held in reserve as a *response*, usable only
+if the Senate asserts that automated access is impermissible, at which
+point uneven application becomes relevant.
+
+**Working hypothesis: overbroad bot-management deployment, not policy.**
+Favouring it: no announcement; no `robots.txt` (a real anti-automation
+policy normally publishes directives); no replacement offered; the
+GET/POST asymmetry is the classic signature of a default Bot Manager
+ruleset scoring state-changing requests on TLS fingerprint; and many
+government sites rolled out exactly this through 2025–26. Against it:
+only the timing — the Senate
+[blocked a congressional stock-trading bill on 2026-09-30](https://gvwire.com/2026/09/30/bill-to-limit-stock-trading-in-us-congress-blocked-in-senate/),
+about a week prior. That is coincidence with no supporting evidence and
+is explicitly excluded from the outreach; recorded here only so a future
+reader doesn't rediscover it and over-read it.
+
+This hypothesis sets the tone of the outreach: a misconfiguration gets
+fixed by a polite technical email to the right engineer, whereas a public
+accusation converts it into a defended policy position.
+
+**Open — data scope.** Senate is 46% of congressional transactions (6,819
+of 14,776) and stops at filing date 2026-10-07. Any cut run after that
+date drifts House-only. **Check the chamber mix before describing a
+post-2026-10 result as "congressional."**
+
+---
+
 ### 6.1 Policy-event windows (roadmap, on deck)
 
 **Why.** Wei & Zhou's information-channel hypothesis predicts the
