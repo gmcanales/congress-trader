@@ -112,12 +112,18 @@ def _owner_bucket(owner):
         (owner or "").strip().upper(), "Self")
 
 
+# Above this window a bucket holds too many names for a per-ticker segment to
+# be more than a hairline, so the breakdown stays aggregate.
+SEGMENT_MAX_WINDOW_DAYS = 30
+
+
 def compute_breakdown(window_days: int = 90,
                       end: date | None = None,
                       filer_types: list[str] | None = None) -> dict:
     end = end or date.today()
     start = end - timedelta(days=window_days)
     filer_types = filer_types or ["member"]
+    segment = window_days <= SEGMENT_MAX_WINDOW_DAYS
 
     with engine.begin() as conn:
         rows = conn.execute(text(_BASE_SQL),
@@ -168,13 +174,33 @@ def compute_breakdown(window_days: int = 90,
                 continue
             b = acc.setdefault(bucketers[key](r),
                                {"bucket": "", "buys": 0, "sells": 0,
-                                "buy_amount": 0.0, "sell_amount": 0.0})
+                                "buy_amount": 0.0, "sell_amount": 0.0,
+                                "_buy_tickers": {}, "_sell_tickers": {}})
+            amt = float(r["amt"] or 0)
             b["buys" if side == "buy" else "sells"] += 1
-            b["buy_amount" if side == "buy" else "sell_amount"] += float(r["amt"] or 0)
+            b["buy_amount" if side == "buy" else "sell_amount"] += amt
+            if segment:
+                tick = b[f"_{side}_tickers"].setdefault(
+                    r["ticker"], {"n": 0, "amount": 0.0})
+                tick["n"] += 1
+                tick["amount"] += amt
         for name, b in acc.items():
             b["bucket"] = name
             b["net"] = b["buys"] - b["sells"]
             b["total"] = b["buys"] + b["sells"]
+            if segment:
+                # Per-ticker segments, biggest first. Width is driven by the
+                # trade count and thickness by the dollar midpoint, so both
+                # are carried per side.
+                for side in ("buy", "sell"):
+                    raw = b.pop(f"_{side}_tickers", {})
+                    b[f"{side}_tickers"] = sorted(
+                        ({"ticker": t, "n": v["n"], "amount": round(v["amount"], 2)}
+                         for t, v in raw.items()),
+                        key=lambda d: (-d["n"], -d["amount"], d["ticker"]))
+            else:
+                b.pop("_buy_tickers", None)
+                b.pop("_sell_tickers", None)
         # Largest total first; "Unknown" always sinks to the bottom so a data
         # gap never leads the chart.
         buckets = sorted(acc.values(),
@@ -197,5 +223,7 @@ def compute_breakdown(window_days: int = 90,
         "n_buys": n_buy,
         "n_sells": n_sell,
         "market_cap_is_current": True,
+        "segmented": segment,
+        "segment_max_window_days": SEGMENT_MAX_WINDOW_DAYS,
         "dimensions": dims,
     }

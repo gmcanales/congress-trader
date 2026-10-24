@@ -181,8 +181,9 @@ def data_freshness():
 
 @router.get("/breakdown")
 def breakdown(
-    window_days: int = Query(90, ge=7, le=1095,
-        description="How many days back from `end` to include, by filing date."),
+    window_days: int = Query(90, ge=1, le=1095,
+        description="How many days back from `end` to include, by filing date. "
+                    "At 30 days or fewer the buckets also carry per-ticker segments."),
     end: Optional[date] = Query(None, description="YYYY-MM-DD. Defaults to today."),
     filer_types: str = Query("member",
         description="Comma-separated: member | executive."),

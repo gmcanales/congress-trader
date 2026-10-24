@@ -1246,3 +1246,25 @@ input:focus { border-color: var(--accent); }
   background: var(--surface2); color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Per-ticker segments (short windows). Identity is hover + the 2px gap
+   between boxes, never hue — a 30-day window can hold dozens of tickers. */
+.bd-seg { stroke: var(--surface); stroke-width: 1; cursor: pointer; }
+.bd-seg.bd-buy  { fill: var(--buy); }
+.bd-seg.bd-sell { fill: var(--sell); }
+.bd-seg:hover { stroke: var(--text); stroke-width: 1.5; filter: brightness(1.2); }
+.bd-tip {
+  position: fixed; z-index: 90; pointer-events: none;
+  background: var(--tooltip-bg, var(--surface2));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius); padding: 7px 10px;
+  font-size: 11px; line-height: 1.5; color: var(--text);
+  max-width: 260px; box-shadow: 0 4px 18px rgba(0,0,0,.35);
+}
+.bd-tip.hidden { display: none; }
+.bd-tip-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 2px; }
+.bd-tip-side { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; }
+.bd-tip-side.buy  { color: var(--buy); }
+.bd-tip-side.sell { color: var(--sell); }
+.bd-tip-amt { font-variant-numeric: tabular-nums; }
+.bd-tip-note { color: var(--text-faint); font-size: 10px; }
