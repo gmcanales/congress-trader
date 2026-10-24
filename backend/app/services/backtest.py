@@ -11,7 +11,7 @@ Design principles (to keep the analysis honest):
 """
 import logging
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import SessionLocal
+from app.services import symbols
 from app import models
 
 logger = logging.getLogger(__name__)
@@ -198,33 +199,181 @@ def _fetch_batch(tickers: list[str], start: date, end: date) -> dict:
     return out
 
 
+# How long before we ask the vendor again about a symbol it had no data for.
+# Delisted names never come back, but a symbol can also come up empty because
+# the request failed, so this retries occasionally instead of never — just not
+# on every run. Grows with consecutive failures, capped.
+MARKET_STALE_DAYS = 5          # bars this far behind the market = not trading
+NO_DATA_RETRY_DAYS = 14
+NO_DATA_RETRY_MAX_DAYS = 90
+
+
+def _price_meta(db, symbols: set[str]) -> dict:
+    rows = (
+        db.query(models.TickerInfo)
+        .filter(models.TickerInfo.symbol.in_(list(symbols)))
+        .all()
+    ) if symbols else []
+    return {r.symbol: r for r in rows}
+
+
+def _due_for_attempt(meta, now: datetime, start: date, end: date) -> bool:
+    """Whether to call the vendor again for a symbol whose coverage is short.
+
+    The gate is "have we already asked for this window recently", not "has it
+    failed" — those come apart in both directions:
+
+    * A healthy symbol's last fetch *succeeded* (price_attempts == 0) and it
+      still needs today's bar, so it must stay on a daily cadence. Backing off
+      on success would quietly freeze every price in the database.
+    * A delisted symbol's fetch also succeeds — it returns the same historical
+      bars every time — so failure count alone never identifies it. What marks
+      it is that we keep asking for a window ending today and the data never
+      reaches today.
+    """
+    if meta is None or meta.price_last_attempt is None:
+        return True
+    if meta.price_status == "not_a_ticker":
+        return False          # resolution already decided; no vendor call helps
+
+    # Have we already requested at least this much history, and asked for an
+    # end at least this recent? If not, this is a genuinely new request.
+    asked_start = meta.price_window_start
+    asked_end = meta.price_window_end
+    already_asked = (
+        asked_start is not None and asked_start <= start
+        and asked_end is not None
+        and asked_end >= end - timedelta(days=MARKET_STALE_DAYS)
+    )
+    if not already_asked:
+        return True
+
+    # Same window as last time. Consecutive failures stretch the interval;
+    # a symbol whose last attempt succeeded is simply on the daily cadence.
+    backoff_days = (1 if meta.price_attempts == 0
+                    else min(NO_DATA_RETRY_DAYS * meta.price_attempts,
+                             NO_DATA_RETRY_MAX_DAYS))
+    return (now - meta.price_last_attempt) >= timedelta(days=backoff_days)
+
+
+def _record_price_attempt(db, ticker: str, fetch_symbol: str | None,
+                          status: str, now: datetime,
+                          start: date | None = None,
+                          end: date | None = None) -> None:
+    """Upsert fetch bookkeeping. Resets the failure count on success, and
+    widens the recorded request window so we never re-ask for history the
+    vendor has already declined to provide."""
+    col = models.TickerInfo.__table__.c
+    stmt = pg_insert(models.TickerInfo.__table__).values(
+        symbol=ticker, fetch_symbol=fetch_symbol, price_status=status,
+        price_last_attempt=now, price_attempts=0 if status == "ok" else 1,
+        price_window_start=start, price_window_end=end,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["symbol"],
+        set_={
+            "fetch_symbol": fetch_symbol,
+            "price_status": status,
+            "price_last_attempt": now,
+            "price_attempts": (
+                0 if status == "ok" else col.price_attempts + 1
+            ),
+            "price_window_start": func.least(
+                func.coalesce(col.price_window_start, start), start),
+            "price_window_end": func.greatest(
+                func.coalesce(col.price_window_end, end), end),
+        },
+    )
+    db.execute(stmt)
+
+
 def ensure_prices(tickers: set[str], start: date, end: date) -> dict:
-    """Fetch price history for any tickers not already covering [start, end]."""
+    """Fetch price history for any tickers not already covering [start, end].
+
+    Bars are stored under the *disclosed* ticker even when the vendor is
+    queried under a different spelling (BRK.B -> BRK-B), so every existing
+    join against transactions.ticker keeps working.
+    """
     db = SessionLocal()
-    stats = {"requested": len(tickers), "fetched": 0, "missing": 0}
+    now = datetime.utcnow()
+    stats = {"requested": len(tickers), "fetched": 0, "missing": 0,
+             "skipped_unresolvable": 0, "skipped_backoff": 0}
     try:
-        needed = []
+        meta = _price_meta(db, set(tickers))
+
+        needed: dict[str, str] = {}      # disclosed ticker -> fetch symbol
         for t in tickers:
             mn, mx = (
                 db.query(func.min(models.PriceBar.date), func.max(models.PriceBar.date))
                 .filter(models.PriceBar.ticker == t)
                 .first()
             )
-            if mn is None or mn > start + timedelta(days=10) or mx < end - timedelta(days=10):
-                needed.append(t)
+            m = meta.get(t)
 
-        logger.info(f"ensure_prices: {len(needed)}/{len(tickers)} tickers need fetching")
-        for i in range(0, len(needed), PRICE_BATCH):
-            batch = needed[i:i + PRICE_BATCH]
+            # Two separate questions, and conflating them is what made this
+            # re-fetch everything forever:
+            #   history — do we have bars back to `start`, OR have we already
+            #             asked that far back and been given all there is?
+            #             (a 2023 IPO can never have 2020 bars)
+            #   recent  — are we current with the market? A symbol whose last
+            #             bar sits well behind the market's last bar has
+            #             stopped trading; asking again tomorrow won't help.
+            asked_back_far_enough = (m is not None
+                                     and m.price_window_start is not None
+                                     and m.price_window_start <= start)
+            has_history = mn is not None and mn <= start + timedelta(days=10)
+            covered_history = has_history or (mn is not None and asked_back_far_enough)
+
+            covered_recent = mx is not None and mx >= end - timedelta(
+                days=MARKET_STALE_DAYS)
+
+            if covered_history and covered_recent:
+                continue
+
+            fetch_symbol = symbols.resolve(t)
+            if fetch_symbol is None:
+                # Not a ticker at all — record it once so we never ask again.
+                if m is None or m.price_status != "not_a_ticker":
+                    _record_price_attempt(db, t, None, "not_a_ticker", now)
+                stats["skipped_unresolvable"] += 1
+                continue
+
+            # Already asked for this window recently and got nothing more —
+            # whether the symbol is dead or simply absent from the vendor.
+            if not _due_for_attempt(m, now, start, end):
+                stats["skipped_backoff"] += 1
+                continue
+
+            needed[t] = fetch_symbol
+        db.commit()
+
+        logger.info(
+            f"ensure_prices: {len(needed)}/{len(tickers)} tickers need fetching "
+            f"({stats['skipped_unresolvable']} unresolvable, "
+            f"{stats['skipped_backoff']} in backoff)"
+        )
+
+        items = list(needed.items())
+        for i in range(0, len(items), PRICE_BATCH):
+            batch = items[i:i + PRICE_BATCH]
+            by_fetch = {fs: t for t, fs in batch}
             try:
-                fetched = _fetch_batch(batch, start, end)
-                for t, df in fetched.items():
-                    _store_prices(db, t, df)
+                fetched = _fetch_batch([fs for _, fs in batch], start, end)
+                for fetch_symbol, df in fetched.items():
+                    disclosed = by_fetch.get(fetch_symbol, fetch_symbol)
+                    _store_prices(db, disclosed, df)
+                    _record_price_attempt(db, disclosed, fetch_symbol, "ok", now, start, end)
+                for t, fs in batch:
+                    if fs not in fetched:
+                        _record_price_attempt(db, t, fs, "no_data", now, start, end)
                 stats["fetched"] += len(fetched)
                 stats["missing"] += len(batch) - len(fetched)
             except Exception as exc:
-                logger.warning(f"price batch failed ({batch[0]}…): {exc}")
+                logger.warning(f"price batch failed ({batch[0][1]}…): {exc}")
+                for t, fs in batch:
+                    _record_price_attempt(db, t, fs, "error", now, start, end)
                 stats["missing"] += len(batch)
+            db.commit()
             time.sleep(1)  # be polite to Yahoo
     finally:
         db.close()

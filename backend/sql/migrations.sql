@@ -47,3 +47,25 @@ UPDATE members SET filer_type = 'member' WHERE filer_type IS NULL OR filer_type 
 -- chamber and state_dst are NULL-OK for executive filers (they don't sit in
 -- either chamber and don't represent a district). Existing constraints already
 -- allow NULL — these statements are documentation, no schema change required.
+
+-- Price-fetch bookkeeping, so the engine stops re-requesting symbols the
+-- vendor has already refused. Before this, ensure_prices() marked a ticker
+-- as "needed" whenever its bars didn't reach the window end — which is
+-- permanently true for every delisted name — so ~300 dead symbols were
+-- re-fetched on every snapshot and backtest run and failed every time.
+--   fetch_symbol       vendor spelling we actually request (BRK.B -> BRK-B);
+--                      NULL once resolution decides the string isn't a ticker
+--   price_status       ok | no_data | not_a_ticker | error
+--   price_attempts     consecutive failures, drives the retry backoff
+ALTER TABLE tickers ADD COLUMN IF NOT EXISTS fetch_symbol       TEXT;
+ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_status       TEXT;
+ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_last_attempt TIMESTAMP;
+ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_attempts     INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS ix_tickers_price_status ON tickers(price_status);
+
+-- What window we last *asked* the vendor for. Coverage alone can't tell
+-- "we never requested this history" from "this is all the history there is":
+-- a 2023 IPO can never have 2020 bars, so a start-of-window test re-requests
+-- it on every run forever. Recording the request lets us ask once.
+ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_window_start DATE;
+ALTER TABLE tickers ADD COLUMN IF NOT EXISTS price_window_end   DATE;

@@ -160,6 +160,18 @@ class TickerInfo(Base):
     last_updated = Column(DateTime, default=datetime.utcnow)
     source = Column(String)  # e.g. "yfinance"
 
+    # Price-fetch bookkeeping. Without it the engine re-requests every
+    # delisted symbol on every run (their bars can never reach "today"),
+    # which is most of what a cold price pass spends its time failing at.
+    fetch_symbol = Column(String)        # vendor spelling, e.g. BRK.B -> BRK-B
+    price_status = Column(String, index=True)   # ok|no_data|not_a_ticker|error
+    price_last_attempt = Column(DateTime)
+    price_attempts = Column(Integer, nullable=False, default=0)
+    # Widest window we've actually requested, so "no bars that far back"
+    # isn't confused with "never asked that far back".
+    price_window_start = Column(Date)
+    price_window_end = Column(Date)
+
 
 # ── v2 leadership tables ────────────────────────────────────────────────────
 
