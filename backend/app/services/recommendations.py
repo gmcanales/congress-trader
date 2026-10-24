@@ -34,7 +34,7 @@ from app.services.backtest import (
     DEFAULT_BENCHMARK, SELL_TYPES, GICS_TO_ETF,
     LEADERSHIP_ROLE_TYPES, OWNER_FILTERS,
     ensure_prices, _close_series, _compute_beta, _find_first_exit_idx,
-    _apply_owner_filter, _apply_filer_types,
+    _apply_owner_filter, _apply_filer_types, _apply_canonical,
 )
 
 
@@ -250,6 +250,10 @@ def compute_recommendations(as_of: date,
             eq = eq.filter(leadership_filter)
         eq = _apply_owner_filter(eq, owner_filter)
         eq = _apply_filer_types(eq, filer_types)
+        # One position per distinct disclosed trade. Without this an amended
+        # filing, or a PTR listing the same security once per account, opens
+        # the same position several times over.
+        eq = _apply_canonical(eq)
         entries = eq.order_by(models.Transaction.filing_date).all()
 
         # All sales by relevant members on those tickers, up to AND including
@@ -275,6 +279,7 @@ def compute_recommendations(as_of: date,
             # same ticker.
             sq = _apply_owner_filter(sq, owner_filter)
             sq = _apply_filer_types(sq, filer_types)
+            sq = _apply_canonical(sq)
             for s_ticker, s_date, s_member in sq.all():
                 sales_by_key.setdefault((s_member, s_ticker), []).append(s_date)
 

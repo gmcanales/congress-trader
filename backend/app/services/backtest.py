@@ -104,6 +104,45 @@ def _apply_owner_filter(q, owner_filter: str):
     raise ValueError(f"unknown owner_filter: {owner_filter!r} (expected one of {OWNER_FILTERS})")
 
 
+def _canonical_tx_subquery():
+    """Ids of one row per distinct disclosed trade.
+
+    The raw `transactions` table deliberately keeps every line exactly as
+    filed, and that is correct: a PTR really does list the same security
+    several times across accounts, and an amended filing really does
+    re-report trades already disclosed. Both are faithful to the source
+    document. Both also double-count in analysis.
+
+    Measured on 2026-10-24: 765 excess rows repeated inside a single filing
+    and 560 repeated across filings, out of 13,290 ticker-bearing rows.
+
+    The surviving row is the one with the EARLIEST filing date. That is the
+    methodological point, not a tiebreak — a re-report does not make a trade
+    newly public, so keeping the later filing would re-enter a years-old
+    trade as a fresh `filing_date` signal. 161 of the cross-filing groups
+    were re-filed more than a year after the original.
+    """
+    t = models.Transaction
+    ranked = select(
+        t.id.label("id"),
+        func.row_number().over(
+            # asset_name is load-bearing, not decoration: most non-ticker
+            # rows (bonds, funds, notes) share a date, type and amount range
+            # and are told apart ONLY by their name. Leaving it out collapses
+            # 278 distinct bonds in one filing into a single row.
+            partition_by=[t.member_id, t.ticker, t.asset_name, t.transaction_date,
+                          t.transaction_type, t.amount_min, t.owner],
+            order_by=[t.filing_date.asc().nullslast(), t.id.asc()],
+        ).label("rn"),
+    ).subquery()
+    return select(ranked.c.id).where(ranked.c.rn == 1)
+
+
+def _apply_canonical(q):
+    """Restrict a Transaction query to one row per distinct disclosed trade."""
+    return q.filter(models.Transaction.id.in_(_canonical_tx_subquery()))
+
+
 def _apply_visibility(q, visibility: str, date_col,
                       high_pct: float = visibility_svc.DEFAULT_HIGH_PCT):
     """Restrict events by how much public attention the name had *at the time*.
@@ -519,6 +558,7 @@ def event_study(start: date, end: date, date_field: str = "filing_date",
             q = q.filter(_leadership_exists_filter())
         q = _apply_owner_filter(q, owner_filter)
         q = _apply_visibility(q, visibility, date_col)
+        q = _apply_canonical(q)
         q = _apply_filer_types(q, filer_types)
         rows = q.all()
         tickers = {r.ticker for r in rows}
@@ -690,6 +730,7 @@ def rules_backtest(start: date, end: date, horizon_days: int = 63,
             q = q.filter(_leadership_exists_filter())
         q = _apply_owner_filter(q, owner_filter)
         q = _apply_visibility(q, visibility, date_col)
+        q = _apply_canonical(q)
         q = _apply_filer_types(q, filer_types)
         rows = q.order_by(date_col).all()
         tickers = {r.ticker for r in rows}
