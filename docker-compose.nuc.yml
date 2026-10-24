@@ -1,11 +1,15 @@
-# NUC overlay: skip host port mapping for backend (port 8000 occupied by media-center),
-# let backend reach native Postgres via host-gateway, frontend reaches backend by service name.
-# Start with: docker compose -f docker-compose.yml -f docker-compose.nuc.yml up -d --build backend frontend
+# NUC overlay: skip the host port mapping for backend (port 8000 is occupied by
+# media-center) and let the backend reach the NUC's *native* Postgres through
+# the host gateway, so the DB hop is loopback rather than a LAN round-trip.
+#
+# The connection string itself lives in .env (DATABASE_URL, pointed at
+# host.docker.internal) — not here. This file is tracked; .env is not.
+#
+# .env on the NUC also sets
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.nuc.yml
+# so a bare `docker compose` — including the one inside scripts/deploy.sh —
+# picks this overlay up automatically instead of silently dropping it.
 services:
   backend:
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      DATABASE_URL: postgresql://trading_user:REDACTED@host.docker.internal:5432/trading_db
-      REPORTS_DIR: /reports
-      DOCS_DIR: /docs

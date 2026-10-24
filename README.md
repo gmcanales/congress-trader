@@ -176,6 +176,13 @@ CLAUDE.md               live project doc / architecture spec
   may be bound to 80 / 8000 / 5432. Either stop it
   (`docker ps` → `docker stop`) or change the port mappings in
   `docker-compose.yml`.
+- **`502 Bad Gateway` from nginx right after restarting only the backend** —
+  nginx resolves `backend` once at config load and pins the IP, so a
+  recreated backend container (new IP) leaves it proxying to a dead address.
+  Restart the frontend too (`docker compose restart frontend`), or just use
+  `./scripts/deploy.sh backend frontend`, which recreates both. Note that a
+  backend restart also kicks off a startup snapshot backfill for every risk
+  profile (~2–3 minutes) if today's snapshot doesn't exist yet.
 - **`Could not apply migrations` or `Could not apply views` in backend logs**
   — confirm `DATABASE_URL` in `.env` points at the right host and the
   user has DDL permissions. The applier logs but does not abort startup if
