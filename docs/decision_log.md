@@ -1070,6 +1070,114 @@ in the UI. Cabinet data sits in the database for analytical use; the
 4 live profiles remain congressional-only (per the `filer_types=['member']`
 pin landed in `b06e944`).
 
+### 6.5 Price-coverage repair + the visibility cut (2026-10-24, runs #69–71)
+
+**Why this came first.** Picking the project back up after ~5 months, two
+infrastructure problems turned out to be load-bearing for the analysis, so
+they got fixed before any new cut was run.
+
+**Ingestion had silently stopped.** There was exactly one scheduled job in
+the system — the 6am-ET recommendation snapshot. Scraping only ever
+happened when someone opened the Admin panel and clicked it, and nothing
+surfaced the omission: the snapshot job rebuilt recommendations every
+morning on whatever was in the database. Found 9 days stale (19,797
+transactions, latest filing 2026-10-15, both unchanged from the previous
+session) while prices and snapshots kept updating normally. A second
+APScheduler job now runs the scrape at 04:00 ET, two hours ahead of the
+snapshot, and writes its outcome to `app_settings['ingest.last_run']`,
+surfaced on the Recommendations freshness banner.
+
+**Senate eFD is now closed to automated access.** The first scheduled run
+isolated chambers, which immediately earned its keep: House ingested 7
+filings / 12 transactions, Senate returned 403. The refusal is at the edge
+— the *agreement POST itself* returns a WAF "Access Denied" page rather
+than a Django error — so this is an access decision at the source, not a
+bug to fix or something to work around. Senate data stops at 2026-10-07
+and is 46% of the congressional dataset (6,819 of 14,776 transactions).
+**This is an open data-scope problem**, not a solved one: any analysis run
+after 2026-10 is increasingly House-only unless an authorized route is
+found.
+
+**Price coverage was biased, not just incomplete.** 335 of 2,003 disclosed
+tickers had no price bars. Two separate causes:
+
+1. *No symbol resolution.* `BRK.B` was never going to fetch — the vendor
+   spells it `BRK-B`. That one string was the single largest gap (67
+   transactions). Spin-off cells naming two entities ("T WBD", "JNJ KVUE"),
+   `--` placeholder rows, and parser pickups that were never tickers
+   (APPLE, ETF, NYSE) all failed the same way.
+2. *No fetch bookkeeping.* `ensure_prices()` treated a ticker as needing a
+   fetch whenever its bars didn't span the window — permanently true for
+   any delisted name, and for any company that IPO'd after the window
+   start. ~300 dead symbols were re-requested on every snapshot and
+   backtest run and failed every time.
+
+The analytically important part is **which** names were missing: they skew
+toward companies that were acquired, so every backtest had been quietly
+dropping them. Acquisitions typically close at a premium, which biases
+measured returns *downward* — an unquantified bias sitting underneath the
+project's headline null. Resolution deliberately does **not** map acquired
+or renamed companies onto successor symbols; splicing two price series
+across a corporate action would fabricate returns. Those 248 remaining
+unresolved tickers need a sourced corporate-action mapping, which is the
+natural follow-up.
+
+Measured: tickers with bars 1,675 → 1,762; transactions priceable 93.8%;
+a live recommendation recompute 74s → 5.6s.
+
+**The visibility cut.** New engine parameter `visibility ∈ (any, high,
+low)`, built to test whether trades in obscure companies carry more
+information than trades in household names.
+
+*Metric choice mattered more than expected.* Market cap misses the
+distinction entirely — Eaton and Parker Hannifin are ~$100B industrials
+that never make the news. Turnover (volume / market cap) actively inverts
+it, since mega-caps churn less relative to their size: on live data it
+ranked GOOGL (21.7) below Medpace (138.6). Median daily **dollar volume**
+is what tracks attention, and a p95 cut classifies the motivating examples
+correctly — MU/NVDA/GOOGL/TSLA high, ETN/PH/MEDP low. High visibility is a
+narrow slice: 130 of 1,611 traded tickers.
+
+*Point-in-time by construction.* Ranking on today's volume would be
+look-ahead — NVDA's current turnover reflects the AI boom, not its 2021
+standing. `ticker_visibility` buckets by month and ranks cross-sectionally
+within the month; lookups resolve to a month strictly before the filing
+date. NVDA's ADV runs $1.3B (2020) → $32.7B (2026) and the monthly top-10
+genuinely turns over (2021: NIO, BABA; 2026: MU, SNDK, AMD).
+
+**Result — the hypothesis is backwards.**
+
+| tier | train excess | OOS excess | event-study buy 63d (test) |
+|---|---|---|---|
+| high | +25.12% | +8.14% | +2.41%, t=2.03, n=274 |
+| low | −32.46% | +0.71% | −0.10%, t=−0.13, n=506 |
+| any | −18.09% | +4.42% | +0.76%, t=1.19, n=790 |
+
+Rules NAV and per-trade event study agree in direction (per §5.4's
+dual-report rule). The *robust* number here is the training window, where
+low-visibility buys are significantly **negative** across four years
+(−0.90%, t=−2.36, n=2,073): niche congressional trades underperform rather
+than outperform.
+
+**The 2025 high-visibility number should not be read as an edge.** It is
+fat-tailed — dropping 5 of 273 trades (INTC +86%, MSTR +57%, NVDA +49%,
+LLY +45%, TSLA +44%) takes the mean from +2.46% to +1.46%. It is a single
+test year, so the §3.7 trifecta-cohort confound applies. And "high
+visibility" in 2025 is close to a definition of the AI/crypto momentum
+trade, so this cut plausibly measures factor exposure rather than
+congressional information. Establishing otherwise needs a momentum control
+in the Bayesian spec, which is the obvious next step.
+
+**Methodological note worth keeping.** The first pass at these runs used
+`analyze.py` without `--filer-types`, which defaults to *all* filers and
+silently mixed cabinet/OGE trades into a "congressional" comparison
+(n=314 vs 274). `RISK_PROFILES` pins `filer_types=['member']` for exactly
+this reason; the CLI does not. Also note `analyze.py` does **not** persist
+an AnalysisRun — only `POST /api/model/run` does, which is why #69–71 were
+re-run through the API.
+
+---
+
 ### 6.1 Policy-event windows (roadmap, on deck)
 
 **Why.** Wei & Zhou's information-channel hypothesis predicts the
@@ -1149,6 +1257,9 @@ database). Tool `train_test_analysis` unless noted.
 | #65 | 2026-05-24 | filing_date | RSP | no | [63] | [1] | v2.6 cabinet, fixed_horizon RSP; OOS excess +3.31% |
 | #66 | 2026-05-24 | filing_date | SPY | no | [63] | [1] | v2.6 cabinet, mirror+beta-stop, test→2026-04-30; **OOS excess −9.10%** vs SPY |
 | #67 | 2026-05-24 | filing_date | RSP | no | [63] | [1] | v2.6 cabinet, mirror+beta-stop RSP, test→2026-04-30; OOS excess −3.36% |
+| #69 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | **visibility=high** (p95 dollar-volume), filer_types=['member']; OOS excess **+8.14%** — fat-tailed, see §6.5 |
+| #70 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | **visibility=low**, filer_types=['member']; OOS excess +0.71%; train −32.46% (t=−2.36 per-trade) |
+| #71 | 2026-10-24 | filing_date | SPY | no | [63] | [1] | visibility=any baseline, filer_types=['member']; OOS excess +4.42% |
 
 ---
 

@@ -158,6 +158,27 @@ The engine accepts either `date_field`:
 never one-off scripts. `datasets` + `analysis_runs` tables exist for
 traceability. `generate_report.py` consumes those rows.
 
+## Recommendations surface
+
+Undocumented until 2026-10-24; this is a substantial part of the app.
+
+- `services/recommendations.py` — `RISK_PROFILES` (conservative, moderate,
+  aggressive, spouse_favored) and `compute_recommendations()`, shared with
+  the rules backtest so live advice and history stay consistent. Profiles
+  pin `filer_types=['member']`, so cabinet data never leaks into them.
+- `services/snapshot.py` — the daily 06:00 ET job precomputes one snapshot
+  per profile into `recommendation_snapshots` (14 days retained). The API
+  serves the cache, falling back to the freshest snapshot in the same
+  window slot when the requested day isn't built yet, so a page load never
+  pays the ~5.6s live recompute.
+- `routers/recommendations.py` — `/`, `/profiles`, `/strategies`,
+  `/cache`, `/refresh`, and `/freshness` (data-recency banner: last
+  recorded trade, filing/price dates, ingest status).
+- `routers/holdings.py` + `user_holdings` — per-user portfolio tracking,
+  scoped by the verified CF Access email, with CSV bulk upload.
+- Frontend: the **Recommendations** tab in `frontend/index.html` +
+  `frontend/js/recommendations.js`.
+
 ## Database schema
 
 Core tables: `members`, `disclosures`, `transactions`, `price_bars`,
@@ -210,15 +231,36 @@ docker-compose.yml  .env
 
 ## Current state
 
-- Data: 2021–2025 House + Senate (~12k transactions) ingested on the NUC.
+- Data: 2020–2026 House + Senate + executive (OGE 278-T) on the NUC —
+  **19,809 transactions, 415 filers** (337 congressional, 78 executive).
   Local `db` container holds a backup copy.
+- **Ingest is scheduled** (added 2026-10-24): `services/ingest.py` runs at
+  04:00 ET, two hours ahead of the 06:00 ET snapshot job, and records its
+  outcome to `app_settings['ingest.last_run']`. Before this, scraping only
+  happened when someone clicked it in the Admin panel, and the data had
+  gone 9 days stale unnoticed. `POST /api/scrape/daily` runs it on demand;
+  `GET /api/scrape/status` reports the last run.
+- **Senate eFD is closed to automated access** (since ~2026-10-07). The
+  agreement POST returns an edge-level "Access Denied", so this is an
+  access decision at the source, not a bug. House ingest is unaffected.
+  Senate is 46% of congressional transactions, so the panel is
+  increasingly House-only going forward. See `decision_log.md §6.5`.
+- **Price coverage**: 93.8% of disclosed-ticker transactions price.
+  `services/symbols.py` resolves disclosed strings to vendor symbols
+  (BRK.B → BRK-B, spin-off and placeholder cells, non-ticker rejection);
+  `tickers` carries fetch bookkeeping so delisted names aren't re-requested
+  every run. A live recommendation recompute went 74s → 5.6s. 248 tickers
+  remain unresolved — genuine 2025-26 acquisitions and renames that need a
+  **sourced** corporate-action mapping (deliberately not guessed, since
+  splicing price series across a corporate action fabricates returns).
 - v1 backtest complete — null on the actionable (`filing_date`) anchor.
 - v2 leadership work complete through step 3: bioguide_id backfilled,
   positions table populated (37 chamber leadership + 120 committee
   chairs/rankings = 157 tenures), sector data ingested, Bayesian
   hierarchical model fitted.
-- `AnalysisRun` rows catalogued through #60 (rules-backtests + 2 Bayesian
-  fits). Latest canonical report:
+- `AnalysisRun` rows catalogued through #71 (rules-backtests + 2 Bayesian
+  fits + the visibility cut). Note `analyze.py` does **not** persist a run —
+  only `POST /api/model/run` does. Latest canonical report:
   `reports/report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-22.html`.
 - **v2 finding:** Bayesian posterior on `leadership_at_trade` after
   controlling for member baseline, in-majority status, post-trifecta
@@ -255,6 +297,16 @@ docker-compose.yml  .env
   persistence + Bayesian re-fit with cabinet rows is §6.4 in the
   decision log, in progress. See [`docs/decision_log.md §6.3`](docs/decision_log.md) for
   the full ingest writeup.
+- **Visibility finding (2026-10-24, runs #69–71):** new engine parameter
+  `visibility ∈ (any, high, low)`, splitting names by point-in-time median
+  daily dollar volume (p95 cut; market cap and turnover both fail — see
+  `decision_log.md §6.5`). The hypothesis that obscure names carry more
+  information is **backwards**: low-visibility buys are significantly
+  negative across 2021–24 (−0.90%, t=−2.36, n=2,073), while high-visibility
+  2025 OOS excess is +8.14%. The 2025 number is *not* an edge — it is
+  fat-tailed (dropping 5 of 273 trades halves it), single-year, and "high
+  visibility" in 2025 nearly defines the AI/crypto momentum trade. A
+  momentum control in the Bayesian spec is the obvious next step.
 - Known data gap: ~12% scanned/checkbox-grid filings parse poorly
   (deferred). Trump's 05/08/2026 (2) 278-T filing is OCR-garbled
   in its embedded text layer and would need re-OCR to recover its
@@ -274,3 +326,5 @@ Read that first if you're picking the project up cold.
 
 Project context and decisions are also tracked in Claude's memory files
 under `~/.claude/projects/.../memory/` — read `MEMORY.md` there first.
+(As of 2026-10-24 that directory is empty on this host; `decision_log.md`
+is the authoritative narrative.)
