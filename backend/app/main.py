@@ -18,6 +18,7 @@ from app.routers import (
     recommendations, holdings, assets, landing, me, games,
 )
 from app.services import snapshot as snapshot_service
+from app.services import ingest as ingest_service
 
 logging.basicConfig(level=logging.INFO)
 
@@ -46,6 +47,12 @@ def _apply_sql_file(path: str, label: str) -> None:
 ET = ZoneInfo("America/New_York")
 SNAPSHOT_HOUR_ET = int(os.getenv("SNAPSHOT_HOUR_ET", "6"))   # 6am ET default
 SNAPSHOT_MINUTE_ET = int(os.getenv("SNAPSHOT_MINUTE_ET", "0"))
+# Disclosure ingest runs ahead of the snapshot so each day's recommendations
+# are built on the day's filings. Two hours is well clear of a normal
+# incremental pass (seconds to a few minutes once the year is backfilled).
+INGEST_HOUR_ET = int(os.getenv("INGEST_HOUR_ET", "4"))
+INGEST_MINUTE_ET = int(os.getenv("INGEST_MINUTE_ET", "0"))
+INGEST_ENABLED = os.getenv("INGEST_ENABLED", "1") not in ("0", "false", "False")
 
 
 def _today_snapshot_exists() -> bool:
@@ -71,6 +78,22 @@ def _refresh_snapshots_sync():
         snapshot_service.refresh_all_profiles()
     except Exception:
         logging.exception("daily snapshot refresh failed")
+
+
+def _run_ingest_sync():
+    """Sync wrapper so the (blocking, network-heavy) scrape can be offloaded
+    to a worker thread."""
+    try:
+        ingest_service.run_daily_ingest()
+    except Exception:
+        logging.exception("daily ingest failed")
+
+
+async def _scheduled_ingest():
+    """APScheduler entry point for the disclosure scrape."""
+    logging.info("daily disclosure ingest starting")
+    await asyncio.get_running_loop().run_in_executor(None, _run_ingest_sync)
+    logging.info("daily disclosure ingest done")
 
 
 async def _scheduled_refresh():
@@ -99,10 +122,25 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         misfire_grace_time=3600,   # if container started late, still run within the hour
     )
+    if INGEST_ENABLED:
+        scheduler.add_job(
+            _scheduled_ingest,
+            trigger=CronTrigger(hour=INGEST_HOUR_ET,
+                                minute=INGEST_MINUTE_ET,
+                                timezone=ET),
+            id="daily_disclosure_ingest",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+
     scheduler.start()
     logging.info(
         f"scheduler started: daily recs refresh at "
         f"{SNAPSHOT_HOUR_ET:02d}:{SNAPSHOT_MINUTE_ET:02d} ET"
+        + (f"; disclosure ingest at {INGEST_HOUR_ET:02d}:{INGEST_MINUTE_ET:02d} ET"
+           if INGEST_ENABLED else "; disclosure ingest DISABLED")
     )
 
     # Backfill today's snapshot in the background if it's missing so the

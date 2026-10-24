@@ -33,6 +33,7 @@ from app.services.snapshot import (
     MAX_DAYS_PER_PROFILE,
 )
 from app.database import SessionLocal
+from app.services.ingest import get_last_ingest
 from app import models
 
 
@@ -145,8 +146,22 @@ def data_freshness():
             .first()
         )
 
+        # Distinguishes "Congress filed nothing" from "our scraper stopped
+        # running" — without this the banner can't tell those apart, and the
+        # second one is the failure that actually needs attention.
+        last_ingest = get_last_ingest()
+        ingest = None
+        if last_ingest:
+            ingest = {
+                "ok": last_ingest.get("ok"),
+                "finished_at": last_ingest.get("finished_at"),
+                "recorded_at": last_ingest.get("recorded_at"),
+                "transactions_added": last_ingest.get("transactions_added"),
+            }
+
         return {
             "as_of": today.isoformat(),
+            "ingest": ingest,
             "latest_filing_date": latest_filing.isoformat() if latest_filing else None,
             "latest_filing_days_ago": (today - latest_filing).days if latest_filing else None,
             "latest_transaction_date": latest_tx.isoformat() if latest_tx else None,
