@@ -34,6 +34,7 @@ from app.services.snapshot import (
 )
 from app.database import SessionLocal
 from app.services.ingest import get_last_ingest
+from app.services.breakdown import compute_breakdown, DIMENSIONS
 from app import models
 
 
@@ -176,6 +177,26 @@ def data_freshness():
         }
     finally:
         db.close()
+
+
+@router.get("/breakdown")
+def breakdown(
+    window_days: int = Query(90, ge=7, le=1095,
+        description="How many days back from `end` to include, by filing date."),
+    end: Optional[date] = Query(None, description="YYYY-MM-DD. Defaults to today."),
+    filer_types: str = Query("member",
+        description="Comma-separated: member | executive."),
+):
+    """Buy/sell composition of disclosed trades, cut five ways — sector,
+    attention, turnover, market cap, and owner. Descriptive, not a backtest.
+    Reads through the canonical-row filter so amended filings don't double."""
+    types = [t.strip() for t in filer_types.split(",") if t.strip()]
+    return compute_breakdown(window_days=window_days, end=end, filer_types=types)
+
+
+@router.get("/breakdown/dimensions")
+def breakdown_dimensions():
+    return {"dimensions": [{"key": k, "label": v} for k, v in DIMENSIONS.items()]}
 
 
 @router.get("/strategies")

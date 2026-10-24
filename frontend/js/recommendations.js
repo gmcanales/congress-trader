@@ -38,44 +38,9 @@
   const stratChartWrap= document.getElementById('strat-chart-wrap');
 
   // Portfolio
-  const portForm      = document.getElementById('port-form');
-  const portEditId    = document.getElementById('port-edit-id');
-  const portTicker    = document.getElementById('port-ticker');
-  const portShares    = document.getElementById('port-shares');
-  const portCost      = document.getElementById('port-cost');
-  const portBuyDate   = document.getElementById('port-buydate');
-  const portTgtPx     = document.getElementById('port-tgt-px');
-  const portTgtDate   = document.getElementById('port-tgt-date');
-  const portNotes     = document.getElementById('port-notes');
-  const portSaveBtn   = document.getElementById('port-save-btn');
-  const portCancelBtn = document.getElementById('port-cancel-btn');
-  const portStatus    = document.getElementById('port-status');
-  const portTbody     = document.getElementById('port-tbody');
-  const portCount     = document.getElementById('port-count');
-  const portCsvFile   = document.getElementById('port-csv-file');
-  const portCsvPick   = document.getElementById('port-csv-pick-btn');
-  const portCsvMode   = document.getElementById('port-csv-mode');
-  const portCsvSample = document.getElementById('port-csv-sample');
   const footerReports = document.getElementById('footer-reports');
   const footerDocs    = document.getElementById('footer-docs');
 
-  const disclosureModal     = document.getElementById('portfolio-disclosure-modal');
-  const disclosureAcceptBtn = document.getElementById('disclosure-accept-btn');
-  const disclosureCancelBtn = document.getElementById('disclosure-cancel-btn');
-
-  const DISCLOSURE_KEY = 'goosebase_portfolio_disclosure_v1';
-
-  function showDisclosureModal(onAccept) {
-    disclosureModal.classList.remove('hidden');
-    disclosureAcceptBtn.onclick = () => {
-      localStorage.setItem(DISCLOSURE_KEY, '1');
-      disclosureModal.classList.add('hidden');
-      onAccept();
-    };
-    disclosureCancelBtn.onclick = () => {
-      disclosureModal.classList.add('hidden');
-    };
-  }
 
   const PROFILE_COLORS = {
     conservative:   '#58a6ff', // blue
@@ -96,8 +61,6 @@
 
   let initialized = false;
   let lastRecData = null;     // last /recommendations payload
-  let lastHoldings = [];      // user holdings
-  let lastPortNav = null;     // last portfolio NAV series
 
   function showRecsView() {
     recsView.classList.remove('hidden');
@@ -152,29 +115,17 @@
     statusEl.textContent = msg;
     statusEl.className = `scrape-status ${kind}`.trim();
   }
-  function setPortStatus(msg, kind = '') {
-    portStatus.textContent = msg;
-    portStatus.className = `scrape-status ${kind}`.trim();
-  }
-
   // ── init ───────────────────────────────────────────────────────────────────
   function init() {
     asOfInput.value = today();
     goBtn.addEventListener('click', runRecs);
     stratReload.addEventListener('click', loadStrategyChart);
-    portForm.addEventListener('submit', onPortSave);
-    portCancelBtn.addEventListener('click', resetPortForm);
-    portTbody.addEventListener('click', onPortRowClick);
     refreshCacheBtn.addEventListener('click', onRefreshCache);
-    portCsvPick.addEventListener('click', () => portCsvFile.click());
-    portCsvFile.addEventListener('change', onCsvSelected);
-    portCsvSample.addEventListener('click', onDownloadSample);
     window.addEventListener('resize', () => {
       if (lastStratData) drawStrategyChart(lastStratData);
     });
     loadFreshness();
     loadStrategyChart();
-    loadHoldings();
     loadFooterLinks();
     runRecs(); // pre-load today's recs (served from the daily snapshot cache)
   }
@@ -207,55 +158,6 @@
   }
 
   // ── CSV upload ─────────────────────────────────────────────────────────────
-  async function onCsvSelected(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!localStorage.getItem(DISCLOSURE_KEY)) {
-      showDisclosureModal(() => doUploadCsv(file));
-      portCsvFile.value = '';
-      return;
-    }
-    doUploadCsv(file);
-  }
-
-  async function doUploadCsv(file) {
-    portCsvPick.disabled = true;
-    setPortStatus(`Uploading ${file.name}…`);
-    try {
-      const res = await API.uploadCsv(file, portCsvMode.value);
-      const okMsg = `Uploaded ${file.name}: ${res.inserted} inserted, ${res.failed} failed.`;
-      if (res.failed) {
-        const errs = res.results.filter(r => !r.ok).slice(0, 5)
-          .map(r => `row ${r.row}: ${r.error}`).join(' · ');
-        setPortStatus(`${okMsg} ${errs}`, res.inserted ? 'ok' : 'error');
-      } else {
-        setPortStatus(okMsg, 'ok');
-      }
-      await loadHoldings();
-    } catch (err) {
-      setPortStatus(`Upload failed: ${err.message}`, 'error');
-    } finally {
-      portCsvFile.value = '';
-      portCsvPick.disabled = false;
-    }
-  }
-
-  async function onDownloadSample(e) {
-    e.preventDefault();
-    try {
-      const sample = await API.getCsvSample();
-      const blob = new Blob([sample.content], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = sample.filename || 'portfolio_template.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setPortStatus(`Sample download failed: ${err.message}`, 'error');
-    }
-  }
-
   async function onRefreshCache() {
     refreshCacheBtn.disabled = true;
     setStatus('Rebuilding cache in background — this can take ~30s…');
@@ -395,10 +297,34 @@
   }
 
   function renderHold(items) {
-    holdCount.textContent = items.length ? `(${items.length})` : '';
-    holdTbody.innerHTML = items.map(p => `
+    // One row per (member, ticker) position rather than per lot. A member can
+    // genuinely buy the same name twice — on different days, or on one day in
+    // two amount brackets — and listing each lot made real positions look like
+    // duplicated rows. Lots are rolled up and counted instead; the entry shown
+    // is the earliest, which is the one the holding period runs from.
+    const groups = new Map();
+    for (const p of items) {
+      const key = `${p.member_name}|${p.ticker}`;
+      const g = groups.get(key);
+      if (!g) { groups.set(key, { ...p, lots: 1 }); continue; }
+      g.lots += 1;
+      if (p.entry_filing_date < g.entry_filing_date) {
+        g.entry_filing_date = p.entry_filing_date;
+        g.days_held = p.days_held;
+      }
+      // Worst drawdown across lots is the honest risk figure for the position.
+      if (p.drawdown_from_peak != null &&
+          (g.drawdown_from_peak == null || p.drawdown_from_peak < g.drawdown_from_peak)) {
+        g.drawdown_from_peak = p.drawdown_from_peak;
+      }
+    }
+    const rows = [...groups.values()];
+    holdCount.textContent = rows.length
+      ? `(${rows.length}${rows.length !== items.length ? ` from ${items.length} lots` : ''})`
+      : '';
+    holdTbody.innerHTML = rows.map(p => `
       <tr>
-        <td><b>${p.ticker}</b></td>
+        <td><b>${p.ticker}</b>${p.lots > 1 ? `<span class="lot-badge" title="${p.lots} separate disclosed purchases">×${p.lots}</span>` : ''}</td>
         <td>${p.member_name}</td>
         <td>${p.entry_filing_date}</td>
         <td>${p.days_held}</td>
@@ -461,7 +387,6 @@
         `Open ${data.summary.n_open_today} · Holding ${data.summary.n_holding} · Close ${data.summary.n_close_today}`,
         'ok',
       );
-      renderHoldings(); // refresh strategy-view pills
     } catch (e) {
       console.error(e);
       setStatus(`Error: ${e.message}`, 'error');
@@ -488,16 +413,6 @@
         d3.select(stratChartEl).selectAll('*').remove();
         stratLegend.innerHTML = '';
         return;
-      }
-      // Fetch user portfolio NAV across the same window for the overlay.
-      const dates0 = data.profiles[0].dates;
-      const stratStart = dates0[0];
-      const stratEnd = dates0[dates0.length - 1];
-      try {
-        lastPortNav = await API.getPortfolioNav(stratStart, stratEnd);
-      } catch (e) {
-        console.warn('portfolio NAV unavailable:', e.message);
-        lastPortNav = null;
       }
       renderStratLegend(data);
       drawStrategyChart(data);
@@ -535,20 +450,6 @@
       parts.push(`<span class="legend-item muted">
         missing: ${data.missing.map(m => m.label).join(', ')}</span>`);
     }
-    if (lastPortNav && lastPortNav.series && lastPortNav.series.length) {
-      const s = lastPortNav.series;
-      const lastNav = s[s.length - 1].nav;
-      const ret = ((lastNav - 1) * 100).toFixed(2);
-      const retClass = lastNav > 1 ? 'pos' : lastNav < 1 ? 'neg' : '';
-      parts.push(`<span class="legend-item">
-        <span class="legend-swatch" style="background:#ff3b3b;height:4px"></span>
-        <span><b style="color:#ff3b3b">Your portfolio</b> · ${lastPortNav.n_holdings} holdings</span>
-        <span class="legend-summary ${retClass}">${lastNav > 1 ? '+' : ''}${ret}%</span>
-      </span>`);
-    } else if (lastPortNav && (!lastPortNav.series || !lastPortNav.series.length)) {
-      parts.push(`<span class="legend-item muted">
-        portfolio overlay: add a holding to see your NAV vs the strategies</span>`);
-    }
     stratLegend.innerHTML = parts.join('');
   }
 
@@ -575,9 +476,6 @@
       p.band_lo && p.band_lo.forEach(v => v != null && yVals.push(v));
       p.band_hi && p.band_hi.forEach(v => v != null && yVals.push(v));
     });
-    if (lastPortNav && lastPortNav.series) {
-      lastPortNav.series.forEach(d => d.nav != null && yVals.push(d.nav));
-    }
     const yOrig = d3.scaleLinear()
       .domain([d3.min(yVals), d3.max(yVals)]).nice()
       .range([H - m.b, m.t]);
@@ -633,13 +531,6 @@
       return { bandPath, linePath };
     });
 
-    // User portfolio overlay — bold red, drawn last so it sits on top
-    const userPts = (lastPortNav && lastPortNav.series && lastPortNav.series.length)
-      ? lastPortNav.series.map(d => ({ date: new Date(d.date), v: d.nav })).filter(d => d.v != null)
-      : [];
-    const userPath = userPts.length > 1
-      ? plot.append('path').datum(userPts).attr('class', 'strat-user')
-      : null;
 
     function redraw() {
       xAxisG.call(d3.axisBottom(x).ticks(6));
@@ -662,10 +553,6 @@
         pp.linePath.attr('d', lineFn);
       });
 
-      if (userPath) {
-        const userLineFn = d3.line().x(d => x(d.date)).y(d => y(d.v));
-        userPath.attr('d', userLineFn);
-      }
     }
     redraw();
 
@@ -706,18 +593,6 @@
           ? ` (${lo.toFixed(3)}–${hi.toFixed(3)})` : '';
         return `<div><span style="color:${c}">●</span> <b>${p.label}</b>: ${v ? v.toFixed(3) : '—'} ${ret}${band}</div>`;
       });
-      if (lastPortNav && lastPortNav.series && lastPortNav.series.length) {
-        const sDates = lastPortNav.series.map(d => new Date(d.date));
-        const j = Math.min(
-          d3.bisector(d => d).left(sDates, xVal),
-          sDates.length - 1,
-        );
-        const pt = lastPortNav.series[j];
-        if (pt) {
-          const ret = ((pt.nav - 1) * 100).toFixed(2) + '%';
-          lines.push(`<div><span style="color:#ff3b3b">●</span> <b style="color:#ff3b3b">Your portfolio</b>: ${pt.nav.toFixed(3)} ${ret} <span style="color:var(--text-muted)">· $${Math.round(pt.market_value).toLocaleString()}</span></div>`);
-        }
-      }
       const dateLabel = xVal.toISOString().slice(0, 10);
       tip.innerHTML = `<div style="color:var(--text-muted);margin-bottom:3px">${dateLabel}</div>` + lines.join('');
       const rect = stratChartWrap.getBoundingClientRect();
@@ -744,171 +619,4 @@
     }
   }
 
-  // ── user portfolio ─────────────────────────────────────────────────────────
-  async function loadHoldings() {
-    try {
-      lastHoldings = await API.getHoldings();
-    } catch (e) {
-      console.error(e);
-      lastHoldings = [];
-      setPortStatus(`Error loading portfolio: ${e.message}`, 'error');
-      return;
-    }
-    renderHoldings();
-    // Refresh the chart overlay so the bold-red line reflects the change.
-    if (lastStratData) {
-      const dates0 = lastStratData.profiles[0]?.dates;
-      if (dates0 && dates0.length) {
-        try {
-          lastPortNav = await API.getPortfolioNav(dates0[0], dates0[dates0.length - 1]);
-          renderStratLegend(lastStratData);
-          drawStrategyChart(lastStratData);
-        } catch (e) {
-          console.warn('overlay refresh failed:', e.message);
-        }
-      }
-    }
-  }
-
-  function buildRecLookup() {
-    // Map ticker → {bucket, items} from lastRecData so we can show
-    // each user holding's strategy view.
-    const lookup = { close: {}, holding: {}, open: {} };
-    if (!lastRecData) return lookup;
-    (lastRecData.close || []).forEach(p => {
-      lookup.close[p.ticker] = (lookup.close[p.ticker] || []).concat(p);
-    });
-    (lastRecData.holding || []).forEach(p => {
-      lookup.holding[p.ticker] = (lookup.holding[p.ticker] || []).concat(p);
-    });
-    (lastRecData.open || []).forEach(p => {
-      lookup.open[p.ticker] = (lookup.open[p.ticker] || []).concat(p);
-    });
-    return lookup;
-  }
-
-  function strategyViewCell(ticker, recLookup) {
-    if (!lastRecData) {
-      return '<span class="pill-none">run recs ↑</span>';
-    }
-    const pills = [];
-    if (recLookup.close[ticker]) {
-      pills.push(`<span class="strategy-view-pill pill-close" title="Strategy fires an exit signal today on this ticker">CLOSE (${recLookup.close[ticker].length})</span>`);
-    }
-    if (recLookup.holding[ticker]) {
-      pills.push(`<span class="strategy-view-pill pill-hold" title="Strategy currently holds this ticker">HOLD (${recLookup.holding[ticker].length})</span>`);
-    }
-    if (recLookup.open[ticker]) {
-      pills.push(`<span class="strategy-view-pill pill-buy" title="Strategy opens a new position in this ticker">BUY (${recLookup.open[ticker].length})</span>`);
-    }
-    return pills.length ? pills.join('') : '<span class="pill-none">no signal</span>';
-  }
-
-  function renderHoldings() {
-    portCount.textContent = lastHoldings.length ? `(${lastHoldings.length})` : '';
-    if (!lastHoldings.length) {
-      portTbody.innerHTML = '<tr><td colspan="11" class="empty">No holdings yet — add one above.</td></tr>';
-      return;
-    }
-    const recLookup = buildRecLookup();
-    portTbody.innerHTML = lastHoldings.map(h => {
-      const tgtParts = [];
-      if (h.target_exit_price != null) tgtParts.push(`$${Number(h.target_exit_price).toFixed(2)}`);
-      if (h.target_exit_date) tgtParts.push(h.target_exit_date);
-      const tgt = tgtParts.join(' / ') || '—';
-      return `<tr data-id="${h.id}">
-        <td><b>${h.ticker}</b></td>
-        <td>${fmtNum(h.shares, 4)}</td>
-        <td>${fmtMoney(h.cost_basis)}</td>
-        <td>${fmtMoney(h.current_price)}</td>
-        <td>${fmtMoney(h.current_value)}</td>
-        <td>${fmtPct(h.unrealized_pl_pct)}</td>
-        <td>${h.days_held ?? '—'}</td>
-        <td>${tgt}</td>
-        <td>${strategyViewCell(h.ticker, recLookup)}</td>
-        <td>${h.notes ? `<span title="${h.notes.replace(/"/g, '&quot;')}">${h.notes.length > 24 ? h.notes.slice(0, 24) + '…' : h.notes}</span>` : ''}</td>
-        <td>
-          <button class="port-action-btn" data-action="edit">Edit</button>
-          <button class="port-action-btn danger" data-action="del">Del</button>
-        </td>
-      </tr>`;
-    }).join('');
-  }
-
-  function onPortRowClick(e) {
-    const btn = e.target.closest('button.port-action-btn');
-    if (!btn) return;
-    const tr = btn.closest('tr');
-    const id = parseInt(tr.dataset.id);
-    const h = lastHoldings.find(x => x.id === id);
-    if (!h) return;
-    if (btn.dataset.action === 'edit') {
-      portEditId.value = h.id;
-      portTicker.value = h.ticker;
-      portShares.value = h.shares;
-      portCost.value = h.cost_basis;
-      portBuyDate.value = h.buy_date || '';
-      portTgtPx.value = h.target_exit_price ?? '';
-      portTgtDate.value = h.target_exit_date || '';
-      portNotes.value = h.notes || '';
-      portSaveBtn.textContent = 'Update Holding';
-      portCancelBtn.classList.remove('hidden');
-      portForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (btn.dataset.action === 'del') {
-      if (!confirm(`Delete holding ${h.ticker} (${h.shares} sh)?`)) return;
-      API.deleteHolding(h.id).then(() => {
-        setPortStatus(`Deleted ${h.ticker}.`, 'ok');
-        loadHoldings();
-      }).catch(e => setPortStatus(`Delete failed: ${e.message}`, 'error'));
-    }
-  }
-
-  function resetPortForm() {
-    portEditId.value = '';
-    portForm.reset();
-    portSaveBtn.textContent = 'Add Holding';
-    portCancelBtn.classList.add('hidden');
-  }
-
-  async function onPortSave(e) {
-    e.preventDefault();
-    const isNew = !portEditId.value;
-    if (isNew && !localStorage.getItem(DISCLOSURE_KEY)) {
-      showDisclosureModal(() => doPortSave());
-      return;
-    }
-    doPortSave();
-  }
-
-  async function doPortSave() {
-    const body = {
-      ticker: portTicker.value.trim().toUpperCase(),
-      shares: parseFloat(portShares.value),
-      cost_basis: parseFloat(portCost.value),
-      buy_date: portBuyDate.value,
-      notes: portNotes.value.trim() || null,
-      target_exit_price: portTgtPx.value === '' ? null : parseFloat(portTgtPx.value),
-      target_exit_date: portTgtDate.value || null,
-    };
-    if (!body.ticker || isNaN(body.shares) || isNaN(body.cost_basis) || !body.buy_date) {
-      setPortStatus('Ticker, shares, cost basis, and buy date are required.', 'error');
-      return;
-    }
-    portSaveBtn.disabled = true;
-    try {
-      if (portEditId.value) {
-        await API.updateHolding(parseInt(portEditId.value), body);
-        setPortStatus(`Updated ${body.ticker}.`, 'ok');
-      } else {
-        await API.createHolding(body);
-        setPortStatus(`Added ${body.ticker}.`, 'ok');
-      }
-      resetPortForm();
-      loadHoldings();
-    } catch (err) {
-      setPortStatus(`Save failed: ${err.message}`, 'error');
-    } finally {
-      portSaveBtn.disabled = false;
-    }
-  }
 })();

@@ -265,66 +265,40 @@
         <div class="freshness-meta"></div>
       </div>
 
+      <!-- What Congress is trading: buy/sell composition cut by the
+           dimensions the analysis has built up. Diverging bars (sells left,
+           buys right) so side-of-axis carries buy/sell identity — the
+           buy/sell token pair fails CVD separation in 4 of 10 palettes
+           (deutan dE 2.2-4.4), so colour alone must not be load-bearing. -->
       <div class="panel">
         <div class="panel-head">
-          <h3>Your Portfolio <span id="port-count" class="tx-count"></span></h3>
-          <span class="recs-subtitle">Track your actual holdings — overlaid in <b style="color:#ff3b3b">bold red</b> on
-            the Strategy Comparison chart below, and tagged against the strategy's view (held / closing today / new buy
-            signal).</span>
-        </div>
-
-        <form id="port-form" class="port-form">
-          <input type="hidden" id="port-edit-id">
-          <label>Ticker <input type="text" id="port-ticker" placeholder="AAPL" required></label>
-          <label>Shares <input type="number" id="port-shares" step="any" min="0" required></label>
-          <label>Cost basis ($/sh) <input type="number" id="port-cost" step="any" min="0" required></label>
-          <label>Buy date <input type="date" id="port-buydate" required></label>
-          <label>Target exit $ <input type="number" id="port-tgt-px" step="any" min="0"></label>
-          <label>Target exit date <input type="date" id="port-tgt-date"></label>
-          <label class="port-notes-label">Notes <input type="text" id="port-notes" placeholder="optional"></label>
-          <div class="port-form-actions">
-            <button type="submit" id="port-save-btn" class="btn-primary">Add Holding</button>
-            <button type="button" id="port-cancel-btn" class="btn-ghost hidden">Cancel</button>
-            <div class="port-csv-actions">
-              <input type="file" id="port-csv-file" accept=".csv,text/csv" class="hidden">
-              <button type="button" id="port-csv-pick-btn" class="btn-ghost">Bulk upload CSV…</button>
-              <select id="port-csv-mode" class="mini-select"
-                title="Replace by ticker deletes any existing row with the same ticker before insert.">
-                <option value="append" selected>append</option>
-                <option value="replace_by_ticker">replace by ticker</option>
+          <h3>What Congress Is Trading</h3>
+          <div class="bd-controls">
+            <label>Window
+              <select id="bd-window" class="mini-select">
+                <option value="30">30 days</option>
+                <option value="90">90 days</option>
+                <option value="180" selected>180 days</option>
+                <option value="365">1 year</option>
               </select>
-              <a id="port-csv-sample" class="btn-ghost-link" href="#" title="Download a template CSV">Sample CSV</a>
-            </div>
+            </label>
+            <label>Break down by
+              <select id="bd-dim" class="mini-select"></select>
+            </label>
+            <button id="bd-toggle-all" class="btn-ghost" type="button"
+              title="Show every dimension at once">Compare all</button>
           </div>
-        </form>
-        <div id="port-status" class="scrape-status"></div>
-
-        <div class="rec-table-scroll port-table-scroll">
-          <table class="rec-table port-table">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Shares</th>
-                <th>Cost $</th>
-                <th>Current $</th>
-                <th>Value</th>
-                <th>Unrealized</th>
-                <th>Days held</th>
-                <th>Target</th>
-                <th>Strategy view</th>
-                <th>Notes</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="port-tbody"></tbody>
-          </table>
         </div>
+        <p class="rec-help" id="bd-summary"></p>
+        <div id="bd-chart-wrap" class="bd-chart-wrap"></div>
+        <div id="bd-empty" class="empty hidden">No disclosed trades in this window.</div>
+        <p class="bd-note" id="bd-note"></p>
       </div>
 
       <div class="panel">
         <div class="panel-head">
           <h3>Strategy Comparison <span class="recs-subtitle">Out-of-sample NAV for the three risk profiles, with
-              rolling daily-vol shade. Your portfolio is overlaid in bold red.</span></h3>
+              rolling daily-vol shade.</span></h3>
           <div class="strat-controls">
             <label>σ band <input type="number" id="strat-band-k" value="1" min="0" max="5" step="0.5"></label>
             <label>Window <input type="number" id="strat-band-window" value="21" min="2" max="252"></label>
@@ -499,21 +473,8 @@
   <script src="js/app.js"></script>
   <script src="js/analysis.js"></script>
   <script src="js/recommendations.js"></script>
+  <script src="js/breakdown.js"></script>
 
-  <div id="portfolio-disclosure-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="disclosure-title">
-    <div class="modal-box">
-      <h3 id="disclosure-title">A note before you add your first holding</h3>
-      <ul class="disclosure-list">
-        <li><strong>Your data is private.</strong> Holdings are tied to your login — other users on this app cannot view or access your portfolio.</li>
-        <li><strong>Stored locally.</strong> Data is saved to a private database running on a home server. It is not held by any cloud provider and is not shared with third parties.</li>
-        <li><strong>For informational use only.</strong> Nothing here is investment advice. We make no promises about returns, accuracy, or fitness for any purpose. Investing involves risk, including possible loss of principal.</li>
-      </ul>
-      <div class="modal-actions">
-        <button id="disclosure-accept-btn" class="btn-primary">Got it — add holding</button>
-        <button id="disclosure-cancel-btn" class="btn-ghost">Cancel</button>
-      </div>
-    </div>
-  </div>
 </body>
 
 </html>

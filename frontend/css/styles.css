@@ -1190,3 +1190,59 @@ input:focus { border-color: var(--accent); }
   gap: 10px;
   flex-wrap: wrap;
 }
+
+/* ── What Congress Is Trading (diverging buy/sell breakdown) ── */
+.bd-controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.bd-controls label {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 11px; color: var(--text-muted);
+}
+.bd-controls .btn-ghost.is-active {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent);
+}
+.bd-chart-wrap { margin-top: 4px; }
+.bd-loading { color: var(--text-muted); font-size: 12px; padding: 16px 0; }
+.bd-note {
+  color: var(--text-faint); font-size: 10.5px;
+  margin: 8px 0 0; line-height: 1.5;
+}
+.bd-legend {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  font-size: 11px; color: var(--text-muted); margin-bottom: 6px;
+}
+.bd-key { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.bd-buy-key  { background: var(--buy); }
+.bd-sell-key { background: var(--sell); }
+.bd-legend-net { color: var(--text-faint); margin-left: auto; }
+
+.bd-svg { display: block; overflow: visible; }
+/* Hairline, recessive — the zero baseline, not a gridline. */
+.bd-axis { stroke: var(--border-strong); stroke-width: 1; }
+.bd-bar { stroke: var(--surface); stroke-width: 1; }
+.bd-buy  { fill: var(--buy); }
+.bd-sell { fill: var(--sell); }
+.bd-bar:hover { filter: brightness(1.18); }
+/* Text wears text tokens, never the series colour. */
+.bd-cat { fill: var(--text-muted); font-size: 10.5px; }
+.bd-val { fill: var(--text-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.bd-net { fill: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.bd-net.pos { fill: var(--buy); }
+.bd-net.neg { fill: var(--sell); }
+
+.bd-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.bd-cell { min-width: 0; }
+.bd-cell-title {
+  font-size: 11px; font-weight: 600; color: var(--text);
+  margin-bottom: 2px;
+}
+@media (max-width: 760px) {
+  .bd-grid { grid-template-columns: 1fr; }
+  .bd-legend-net { margin-left: 0; flex-basis: 100%; }
+}
+.lot-badge {
+  display: inline-block; margin-left: 5px; padding: 0 4px;
+  font-size: 9.5px; border-radius: 3px;
+  background: var(--surface2); color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
