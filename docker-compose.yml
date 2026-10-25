@@ -57,6 +57,8 @@ services:
       # responsibility — nginx's `no-cache` on *.css/*.js still applies.
       - ../goose_snake:/usr/share/nginx/html/games/gooooose:ro
       - ../oiligarchy:/usr/share/nginx/html/games/oiligarchy:ro
+      # SF 2026 voter guide — only site/ is served (repo docs stay private).
+      - ../sf_voter_guide/site:/usr/share/nginx/html/sf-2026:ro
     depends_on:
       - backend
 
