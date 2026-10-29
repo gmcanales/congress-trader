@@ -1520,24 +1520,50 @@ installed version as its own candidate, so the box looked up to date. With
 `--no-autoupdate` set on the unit, there was no second path. Source
 corrected to `any`.
 
-**Residual exposure NOT closed, flagged rather than acted on.** The host's
-system trust store still carries four eMudhra **root** CAs — `emSign Root
-CA - C1`, `emSign Root CA - G1`, `emSign ECC Root CA - C3`, `emSign ECC
-Root CA - G3` — and the compromised intermediates chain to these. Debian's
-`ca-certificates` is at 20250419 with no update yet available. Anything on
-the host using the system store (curl, apt, host-side scripts) would still
-accept a certificate forged under those intermediates. The backend runs in
-a container with its own trust store, so its outbound fetches are a
-separate surface. Distrusting the roots by hand is possible
-(`/etc/ca-certificates.conf` with a `!` prefix, then `update-ca-certificates`)
-and low risk given emSign issues for nothing we talk to — but it is a
-system-wide trust change on a production host and was left as the owner's
-decision.
+**eMudhra roots distrusted on the host (done).** The system store carried
+four eMudhra **root** CAs that the compromised intermediates chain to —
+`emSign Root CA - C1`, `emSign Root CA - G1`, `emSign ECC Root CA - C3`,
+`emSign ECC Root CA - G3`. Debian's `ca-certificates` is at 20250419 with
+no update available, so they were distrusted by hand: `!` prefix on those
+four lines in `/etc/ca-certificates.conf`, then `update-ca-certificates`
+(151 → 147 trusted, 0 `emSign` left in the bundle). Outbound TLS
+re-verified afterwards to pkg.cloudflare.com, github.com, api.github.com,
+Yahoo, disclosures-clerk.house.gov and the git remote — all fine. Note the
+backend runs in a container with its own trust store, so container-side
+fetches are a separate surface this does not touch.
 
-**Also noticed.** The systemd unit carries the tunnel token in plaintext in
-`ExecStart`, and the unit file is mode 0644 — any local user can read a
-credential that is sufficient to run this tunnel. Moving it to an
-`EnvironmentFile` at 0600 would fix it.
+**Tunnel token taken off the command line (done).** The unit held the token
+inline in `ExecStart` in a mode-0644 file, so any local user could read it
+— and systemd put it on the process command line, so `ps` exposed it too.
+Moved to `/etc/cloudflared/tunnel-token` (0600 root:root) and the unit
+switched to `--token-file`, which keeps it out of both. Verified: no secret
+left in the unit, 4/4 connections registered, site serving.
+
+**Debian security updates (done).** libgcrypt20, libgnutls30t64 and the
+four krb5 libraries, all from `Debian-Security`. `needrestart` is not
+installed, so nothing was bounced automatically. Postgres, the app and both
+sites verified afterwards. TimescaleDB 2.27.0 → 2.27.1 was deliberately
+left: it is a point release rather than a security fix and touches the
+database.
+
+**Two things NOT finished, both needing a decision:**
+
+1. **A second tunnel on this host is still running the vulnerable binary.**
+   `cloudflared-mysecretmenu.service` (mysecretmenu.com) has been up since
+   2026-06-08, and `/proc/<pid>/exe` reports `(deleted)` — the upgrade
+   replaced the binary underneath it, so it is still executing 2026.5.0 in
+   memory. A `systemctl restart cloudflared-mysecretmenu` fixes it, costs
+   a few seconds of downtime on that site, and was left alone because it
+   is a workload outside this project. Its unit already uses an
+   `EnvironmentFile`, but systemd expands `${TUNNEL_TOKEN}` onto the
+   command line, so it has the same `ps` exposure that was just fixed here
+   — `--token-file` would close it.
+2. **Postgres still maps the pre-upgrade krb5 libraries.** Every backend
+   has 22 deleted mappings, including `libkrb5`, `libgssapi_krb5`,
+   `libk5crypto` and `libkrb5support`; the fix does not take effect until
+   it restarts. Practical risk is low — this instance authenticates by
+   password, not GSSAPI — but it is not zero, and a restart is a real
+   outage for the project database.
 
 ---
 
