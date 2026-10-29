@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Block commits that introduce secrets.
+#
+# Scans STAGED changes only — not the working tree and not history. That
+# matters: .env is gitignored and holds live credentials, so a working-tree
+# scan would flag it on every commit and train everyone to pass --no-verify.
+#
+# Rules live in .gitleaks.toml. The stock ruleset alone is not enough here:
+# it scores the Postgres password that was actually committed to this repo
+# (8 chars, low entropy, no provider pattern) as clean.
+#
+# Install:  git config core.hooksPath scripts/hooks
+# Bypass:   git commit --no-verify   (and then go fix it properly)
+set -uo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-commit: gitleaks not installed — skipping secret scan." >&2
+    echo "            install it, or commit with --no-verify to acknowledge." >&2
+    exit 0
+fi
+
+# Branch on the EXIT CODE, never on the output text: gitleaks prints
+# "no leaks found" when clean, which contains the substring "leaks found".
+out=$(gitleaks git --staged --no-banner --redact -c .gitleaks.toml 2>&1)
+rc=$?
+
+if [ "$rc" -eq 0 ]; then
+    exit 0
+fi
+
+echo >&2
+echo "  COMMIT BLOCKED — a staged change looks like a secret." >&2
+echo >&2
+printf '%s\n' "$out" | sed 's/^/  /' >&2
+echo >&2
+echo "  Real secret?     unstage it, put the value in .env (gitignored)," >&2
+echo "                   and reference it as \${VAR} instead." >&2
+echo "  False positive?  add an allowlist entry to .gitleaks.toml." >&2
+echo >&2
+exit 1

@@ -1,0 +1,87 @@
+# gitleaks config for congress_trader.
+#
+# The stock ruleset is kept (`useDefault = true`) for the provider patterns —
+# AWS keys, GitHub tokens and so on — but it is NOT sufficient here. Scanning
+# this repo's history with defaults alone returns "no leaks found", while the
+# Postgres password committed in docker-compose.nuc.yml (commits 1b44cfb and
+# dca241a, since rotated) sits there untouched: eight characters, 2.75 bits of
+# entropy per character, matching no provider pattern and far below any
+# generic high-entropy threshold.
+#
+# The rules below target the shapes this project actually leaks.
+
+title = "congress_trader"
+
+[extend]
+useDefault = true
+
+# ── 1. Database URL with an inline password ──────────────────────────────
+# The exact shape of the real leak. Deliberately has no entropy floor: the
+# whole point is that a weak password is still a leaked password.
+[[rules]]
+id = "db-url-inline-password"
+description = "Database connection string with an embedded password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqp)://[^:/\s]+:([^@\s/'"]{3,})@'''
+secretGroup = 1
+tags = ["database", "password"]
+
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  # Documentation and template placeholders, not credentials.
+  '''(?i)://[^:]+:(password|passwd|pass|changeme|secret|your[_-]?password|pwd|xxx+|\*+|<[^>]+>|redacted|hidden|example)@''',
+  # Shell / compose interpolation — the value lives elsewhere.
+  '''://[^:]+:\$[{(]?[A-Za-z_][A-Za-z0-9_]*''',
+  # Masked output captured in notes (e.g. "tru***@").
+  '''://[^:]+:[^@]*\*{2,}[^@]*@''',
+  # Non-functional dev fallback in backend/app/config.py: identical user and
+  # password, self-evidently a placeholder. Never reachable in deployment —
+  # the real value always comes from DATABASE_URL in .env.
+  # NB: the rule's match ends at '@', so this must not anchor past it.
+  '''://congress:congress@''',
+]
+
+# ── 2. Cloudflare tunnel token / JWT-shaped credential ───────────────────
+# The tunnel token is base64 JSON beginning "ey". One of these was inline in
+# a mode-0644 systemd unit until 2026-10-29.
+[[rules]]
+id = "jwt-or-tunnel-token"
+description = "JWT or Cloudflare tunnel token"
+regex = '''\bey[A-Za-z0-9_\-]{30,}\.?[A-Za-z0-9_\-]*\.?[A-Za-z0-9_\-]*'''
+tags = ["token", "cloudflare"]
+
+# ── 3. Generic secret assignment ─────────────────────────────────────────
+# PASSWORD= / SECRET= / TOKEN= / API_KEY= with a literal value attached.
+[[rules]]
+id = "generic-secret-assignment"
+description = "Secret-looking variable assigned a literal value"
+regex = '''(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key)\s*[:=]\s*['"]?([^\s'"#,;]{8,})['"]?'''
+secretGroup = 1
+tags = ["generic"]
+
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  '''(?i)[:=]\s*['"]?(changeme|password|your[_-]?\w+|<[^>]+>|xxx+|\*{3,}|redacted|hidden|example|placeholder|none|null|true|false)\b''',
+  # Interpolation, including compose's ${VAR:-default} form.
+  '''[:=]\s*['"]?\$[{(]?[A-Za-z_]''',
+  # Python/shell keyword arguments rather than literals.
+  '''(?i)(password|secret|token|key)\s*[:=]\s*(settings|os\.|config|cfg|self|request|\w+\.\w+)''',
+  # Markdown prose: a match containing a backtick is documentation discussing
+  # the shape of a secret, not a secret. Real credentials don't contain `.
+  # (This rule caught its own description in CLAUDE.md on first run.)
+  '''`''',
+]
+
+# ── Paths exempt from every rule ─────────────────────────────────────────
+[allowlist]
+description = "Templates, docs and lockfiles that legitimately show secret-shaped text"
+paths = [
+  '''\.env\.example$''',          # placeholders by design
+  '''\.gitleaks\.toml$''',        # this file contains the patterns themselves
+  '''^docs/.*\.md$''',            # write-ups quote example connection strings
+  '''^reports/.*\.html$''',       # generated Plotly output, base64 assets
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)frontend/music/''',     # binary audio
+  '''(^|/)frontend/img/''',       # binary images
+]

@@ -120,6 +120,35 @@ ssh-keygen -t ed25519   # if no key exists
 type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh root@db.internal.example "cat >> ~/.ssh/authorized_keys"
 ```
 
+## Secret scanning (pre-commit)
+
+`gitleaks` blocks commits that introduce secrets. Enable it once per clone:
+
+```bash
+git config core.hooksPath scripts/hooks     # hook lives in scripts/hooks/pre-commit
+```
+
+Install the binary from the gitleaks releases page (single static Go binary,
+no runtime deps). Without it the hook warns and passes rather than blocking,
+so a machine that lacks it is not silently unprotected — it says so.
+
+Rules are in `.gitleaks.toml`. **The stock ruleset is not sufficient here**:
+scanning this repo's history with defaults alone reports "no leaks found",
+while the Postgres password committed in `docker-compose.nuc.yml` sits in two
+commits untouched — eight characters, 2.75 bits of entropy per character,
+matching no provider pattern. The custom rules target the shapes this project
+actually leaks: database URLs with inline passwords (no entropy floor, because
+a weak password is still a leaked password), JWT/tunnel tokens, and generic
+`PASSWORD=`/`SECRET=`/`TOKEN=` assignments.
+
+The hook scans **staged changes only**. That is deliberate: `.env` is
+gitignored and holds live credentials, so a working-tree scan would flag it on
+every commit and train everyone to reach for `--no-verify`.
+
+Known accepted finding: commit `1b44cfb` contains the pre-rotation Postgres
+password. Rotated 2026-10-29, so it is inert; history is not being rewritten
+over a dead credential.
+
 ## Data pipeline
 
 Disclosures only exist as **PDFs** (House) or **HTML** (Senate) — there is no
