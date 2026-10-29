@@ -35,9 +35,18 @@ cp .env.example .env
 # The POSTGRES_* vars are only used by the local backup `db` container
 # (kept around as a fallback; not required for normal operation).
 
+# Enable secret scanning before your first commit (once per clone).
+# Without this, nothing stops a credential reaching git — which has
+# happened on this repo. See CLAUDE.md "Secret scanning".
+git config core.hooksPath scripts/hooks
+
 docker compose up -d --build       # builds image, starts backend + frontend + local db
 docker compose logs -f backend     # confirm "Analysis views applied" + Uvicorn startup
 ```
+
+The `DATABASE_URL` password is held in the project owner's password manager,
+not in the repo and not in any committed file. It was rotated 2026-10-29; any
+copy predating that is dead.
 
 On startup the backend applies idempotent SQL migrations
 (`backend/sql/migrations.sql`) and analysis views (`backend/sql/views.sql`)

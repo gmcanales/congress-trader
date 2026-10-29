@@ -100,6 +100,37 @@ NVMe SSD.** Headroom from: disabling `nodm` (~600 MB), disabling `nordvpnd`
 
 Architecture and full migration history in [decision_log.md §8](docs/decision_log.md).
 
+### Setting up a dev box from scratch
+
+Everything a second machine needs. The NUC is already configured; this is for
+the Windows dev box or any new clone.
+
+| # | Step | Notes |
+|---|---|---|
+| 1 | `git clone` the repo | |
+| 2 | `cp .env.example .env`, set `DATABASE_URL` | Password comes from the password manager. Rotated 2026-10-29 — any older copy will fail auth |
+| 3 | `chmod 600 .env` (or the NTFS equivalent) | It holds a live credential |
+| 4 | `git config core.hooksPath scripts/hooks` | Per-clone; the hook is committed but the config is not |
+| 5 | Install the `gitleaks` binary on PATH | Single static Go binary. Without it the hook warns and passes instead of blocking |
+| 6 | SSH key to the NUC, for `dev-on.ps1` | See the one-time setup below |
+
+**Do NOT set `COMPOSE_FILE` on the dev box.** That variable exists only in the
+NUC's `.env` and applies `docker-compose.nuc.yml`, whose `extra_hosts` entry
+points the backend at the NUC's *local* Postgres. On the dev box the backend
+must reach Postgres across the LAN at `db.internal.example:5432`, which is what the base
+compose file plus a LAN `DATABASE_URL` already does.
+
+Postgres accepts the dev box because of this `pg_hba` rule (tightened
+2026-10-29 from a far broader `all/all` grant):
+
+```
+host  trading_db  trading_user  10.0.0.0/24  scram-sha-256
+```
+
+So the dev box can reach exactly one database as exactly one role. If a
+connection from the dev box starts failing, check that rule and the password
+before anything else.
+
 ### Dev override (switching traffic to the dev box)
 
 `scripts/dev-on.ps1` and `scripts/dev-off.ps1` (run from the dev box)
