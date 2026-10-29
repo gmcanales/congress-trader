@@ -1496,6 +1496,51 @@ these):
 - Setup conversation: 2026-05-22.
 - Live operational details in [CLAUDE.md](../CLAUDE.md) under "Public deployment".
 
+### eMudhra certificate compromise — cloudflared patched (2026-10-29)
+
+**What.** Cloudflare disclosed on 2026-10-19 that private keys for eight
+eMudhra intermediate certificates were compromised, and that the keys are
+weak enough to forge a certificate for any domain. Not a code defect: the
+exposure is that `cloudflared`'s certificate handling trusted those
+intermediates, so an attacker with network position could impersonate the
+Cloudflare edge to our connector. Cloudflare's remediation for Tunnel is
+"upgrade to 2026.10.2".
+
+**Done.** NUC upgraded 2026.5.0 → 2026.10.5 (latest; above the stated
+minimum), service restarted, all four tunnel connections re-registered,
+`goosebase.org` verified serving. Previous binary kept for rollback during
+the change.
+
+**Root cause of being five months stale, which is the more useful finding.**
+The apt source pointed at the `trixie` suite, which Cloudflare does not
+publish — `dists/trixie/Release` returns 404 while `any`, `bookworm`,
+`bullseye`, `jammy` and `noble` all return 200. `apt-get update` reported
+the error, but nothing surfaced it and `apt-cache policy` simply showed the
+installed version as its own candidate, so the box looked up to date. With
+`--no-autoupdate` set on the unit, there was no second path. Source
+corrected to `any`.
+
+**Residual exposure NOT closed, flagged rather than acted on.** The host's
+system trust store still carries four eMudhra **root** CAs — `emSign Root
+CA - C1`, `emSign Root CA - G1`, `emSign ECC Root CA - C3`, `emSign ECC
+Root CA - G3` — and the compromised intermediates chain to these. Debian's
+`ca-certificates` is at 20250419 with no update yet available. Anything on
+the host using the system store (curl, apt, host-side scripts) would still
+accept a certificate forged under those intermediates. The backend runs in
+a container with its own trust store, so its outbound fetches are a
+separate surface. Distrusting the roots by hand is possible
+(`/etc/ca-certificates.conf` with a `!` prefix, then `update-ca-certificates`)
+and low risk given emSign issues for nothing we talk to — but it is a
+system-wide trust change on a production host and was left as the owner's
+decision.
+
+**Also noticed.** The systemd unit carries the tunnel token in plaintext in
+`ExecStart`, and the unit file is mode 0644 — any local user can read a
+credential that is sufficient to run this tunnel. Moving it to an
+`EnvironmentFile` at 0600 would fix it.
+
+---
+
 ### Planned migration of the app stack to the NUC (2026-05-22, scoped)
 
 **Why now.** The dev box is online ~16h/day. Moving the user-facing app

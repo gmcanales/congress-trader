@@ -50,6 +50,24 @@ terminated at Cloudflare's edge — the connector → origin hop is plain HTTP,
 which is why the dashboard's `https://localhost:8080` placeholder is wrong
 for this setup. Auth team subdomain: `YOUR-TEAM.cloudflareaccess.com`.
 
+**Keeping cloudflared patched.** The apt source shipped pointing at
+`https://pkg.cloudflare.com/cloudflared trixie`, a suite Cloudflare does
+**not** publish — it 404s, so `apt` silently had no upgrade path and the
+NUC sat on 2026.5.0 for five months without ever reporting an available
+update. Corrected 2026-10-29 to the `any` suite (right choice for a static
+Go binary; `bookworm` also works, `trixie` does not):
+
+```
+deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] \
+    https://pkg.cloudflare.com/cloudflared any main
+```
+
+The unit runs with `--no-autoupdate`, so patches are manual:
+`apt update && apt install --only-upgrade cloudflared && systemctl restart cloudflared`.
+Restarting drops the tunnel for a few seconds — this is the only connector,
+so the public site is briefly down. Check `journalctl -u cloudflared` for
+four `Registered tunnel connection` lines afterwards.
+
 To allow more users: Zero Trust dashboard → Access → Applications → edit
 the app's policy → add their email. (The OTP login method requires no
 identity-provider setup; CF emails a 6-digit code on demand.)
