@@ -13,3 +13,21 @@ services:
   backend:
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Persist nginx logs to the host so they survive `docker compose up --build`.
+  # Without this, /var/log/nginx/{access,error}.log are the nginx:alpine
+  # image's symlinks to /dev/stdout|stderr, so the only copy lives in Docker's
+  # json-file log and is destroyed whenever the container is recreated. The
+  # November 2026 traffic analysis was capped at 11 days for exactly that
+  # reason — that was simply how long the container had been up.
+  #
+  # Mounting a directory here replaces those symlinks with real files, which
+  # means access lines no longer appear in `docker logs frontend`. Read them
+  # on the host instead:
+  #   tail -f /var/log/goosebase/nginx/access.log
+  # Rotated daily by /etc/logrotate.d/goosebase-nginx (90 days, compressed).
+  #
+  # NUC-only, deliberately: the dev box is Windows and has no /var/log.
+  frontend:
+    volumes:
+      - /var/log/goosebase/nginx:/var/log/nginx

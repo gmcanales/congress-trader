@@ -100,6 +100,38 @@ NVMe SSD.** Headroom from: disabling `nodm` (~600 MB), disabling `nordvpnd`
 
 Architecture and full migration history in [decision_log.md §8](docs/decision_log.md).
 
+### nginx access logs (persisted 2026-11-04)
+
+`frontend/nginx.conf` logs to `/var/log/nginx/access.log` with the `cf_real`
+format (`$http_cf_connecting_ip` first, since every request arrives through
+the tunnel and `$remote_addr` is always Cloudflare). But in `nginx:alpine`
+that path is a **symlink to `/dev/stdout`**, so until now the only copy lived
+in Docker's json-file log and was destroyed on every container recreate. A
+traffic analysis on 2026-11-04 could only see 11 days for that reason — that
+was simply how long the container had been up.
+
+`docker-compose.nuc.yml` now bind-mounts `/var/log/goosebase/nginx` over
+`/var/log/nginx`, which replaces the symlinks with real files. Consequences:
+
+- **Access lines no longer appear in `docker logs frontend`.** Read them on
+  the host: `tail -f /var/log/goosebase/nginx/access.log`. Startup notices and
+  errors moved to `error.log` in the same directory.
+- Rotated daily by `/etc/logrotate.d/goosebase-nginx`, 90 days, compressed,
+  `copytruncate` (nginx holds the fd inside the container, so the host can't
+  signal it without a `docker exec` that would fail whenever the container is
+  down). 90 days covers a full California vote-by-mail window plus run-up.
+- **`logrotate` was not installed on the NUC** before this, so the configs
+  that `apt`, `dpkg` and `postgresql-common` had dropped into
+  `/etc/logrotate.d/` had never once run. Installing it activated those too.
+- Pre-persistence logs are archived at
+  `/var/log/goosebase/archive/access-pre-persist-20261104.log.gz` (0600).
+- NUC-only, deliberately — the mount lives in the overlay because the dev box
+  is Windows and has no `/var/log`.
+
+Roughly two-thirds of logged requests are vulnerability scanners probing for
+`/wp-admin`, `/files/` and similar. Filter on status to see real traffic; a
+raw request count will mislead you badly.
+
 ### Setting up a dev box from scratch
 
 Everything a second machine needs. The NUC is already configured; this is for
