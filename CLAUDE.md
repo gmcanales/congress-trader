@@ -1,5 +1,10 @@
 # Congress Trader
 
+> This is the project's live working document — written for whoever (or
+> whatever) picks the code up next, not as marketing. It records current
+> state, including what is broken, deferred, or retracted. `README.md` is the
+> friendlier entry point.
+
 Docker app for ingesting congressional financial disclosures (Periodic
 Transaction Reports), charting member trades against stock prices, and
 backtesting whether following those trades has any edge.
@@ -80,8 +85,11 @@ try `https://goosebase.org/cdn-cgi/trace` as a CF-only liveness check.
 
 The NUC database (`db.internal.example:5432`) remains LAN-only.
 
-**Public leaderboard (`/public_api/`).** The arcade games use a separate URL
-prefix that CF Access does *not* gate. Reads (`GET /public_api/games/leaderboard`)
+**Public leaderboard (`/public_api/`).** A deliberately-public URL prefix
+that CF Access does *not* gate. (In the private deployment this serves a
+small arcade's score table; that frontend is not part of this repo, but the
+API and its abuse controls are, because the access-model design is the
+interesting part.) Reads (`GET /public_api/games/leaderboard`)
 are open; writes require an `X-Game-Key` header whose value must match
 `GAME_POST_KEYS` in `.env` (forwarded into the container via `docker-compose.yml`).
 Three-layer nginx rate limiting throttles the public surface — see

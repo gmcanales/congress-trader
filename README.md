@@ -1,8 +1,28 @@
 # Congress Trader
 
-Docker app for ingesting congressional financial disclosures (Periodic
-Transaction Reports), charting member trades against stock prices, and
-backtesting whether following those trades has any edge.
+Ingests congressional financial disclosures (Periodic Transaction Reports),
+charts member trades against stock prices, and backtests whether following
+those trades carries any edge.
+
+The disclosures only exist as PDFs (House) and HTML (Senate), so roughly half
+the work is extraction: index ZIPs, `pdftotext -layout` parsing, OCR fallback
+for the ~12% of filings that are scans, and symbol resolution from
+hand-typed ticker strings to vendor symbols.
+
+The other half is trying hard not to fool myself. The project's headline
+result is a **null**, and the write-ups spend more words on the ways an
+apparent edge turned out to be an artifact than on the edge itself:
+look-ahead bias from the wrong date anchor, duplicate rows inflating
+t-statistics, sector composition masquerading as a leadership effect. If you
+only read one file, read [`docs/decision_log.md`](docs/decision_log.md) —
+including [§6.7](docs/decision_log.md), where a previously-reported finding
+is retracted.
+
+> **About this repository.** It is a path-filtered extract of a larger
+> private repo that also hosts several unrelated modules (a small arcade, a
+> civic-mailer, a local voter guide). History was rewritten to keep only the
+> paths published here, so some commit messages refer to files you will not
+> find. Nothing analytical was removed.
 
 **Current finding (as of run #18):** no actionable edge in broad
 congressional trading on the tradeable `filing_date` anchor, and the
@@ -15,10 +35,10 @@ composition. Full write-up:
 ## Prerequisites
 
 - Docker Desktop or Docker Engine (Compose v2) — Linux, macOS, or Windows
-- Network access to the project's PostgreSQL instance — the **NUC server at
-  `db.internal.example:5432`, database `trading_db`**. You need a
-  `DATABASE_URL` for this host. Ask the project owner if you don't have
-  one.
+- A PostgreSQL 15+ instance you control. The app applies its own schema on
+  startup, so an empty database is fine — see "Starting from an empty
+  database" below. (`docker-compose.yml` also ships a local `postgres`
+  container you can point at instead.)
 - ~3 GB of disk for the backend image (PyMC + PyTensor are heavy)
 - For yfinance data fetches (price history, sector lookups): outbound
   HTTPS
@@ -26,32 +46,31 @@ composition. Full write-up:
 ## First-run setup
 
 ```bash
-git clone https://github.com/gmcanales/congress_trader
-cd congress_trader
+git clone <this repo> && cd congress_trader
 
 cp .env.example .env
-# Edit .env and set DATABASE_URL to the NUC connection string, e.g.:
-#   DATABASE_URL=postgresql://USER:PASSWORD@db.internal.example:5432/trading_db
-# The POSTGRES_* vars are only used by the local backup `db` container
-# (kept around as a fallback; not required for normal operation).
+# Set DATABASE_URL to your own Postgres, e.g.
+#   DATABASE_URL=postgresql://user:password@localhost:5432/trading_db
+# To use the bundled container instead, point it at `db` and set POSTGRES_*.
+chmod 600 .env                     # it holds a live credential
 
-# Enable secret scanning before your first commit (once per clone).
-# Without this, nothing stops a credential reaching git — which has
-# happened on this repo. See CLAUDE.md "Secret scanning".
-git config core.hooksPath scripts/hooks
-
-docker compose up -d --build       # builds image, starts backend + frontend + local db
-docker compose logs -f backend     # confirm "Analysis views applied" + Uvicorn startup
+docker compose up -d --build       # backend + frontend (+ local db)
+docker compose logs -f backend     # expect "Analysis views applied" + Uvicorn startup
 ```
 
-The `DATABASE_URL` password is held in the project owner's password manager,
-not in the repo and not in any committed file. It was rotated 2026-10-29; any
-copy predating that is dead.
+`.env` is gitignored and no credential is committed. If you fork this and plan
+to commit, turn on the secret scanner first — it is one line, and the reason
+it exists is that a database password *did* reach this repo's history once
+(see CLAUDE.md "Secret scanning"):
+
+```bash
+git config core.hooksPath scripts/hooks   # needs the gitleaks binary on PATH
+```
 
 On startup the backend applies idempotent SQL migrations
-(`backend/sql/migrations.sql`) and analysis views (`backend/sql/views.sql`)
-against the NUC. Nothing destructive runs — the migrations are
-`ADD COLUMN IF NOT EXISTS` and `CREATE OR REPLACE VIEW`.
+(`backend/sql/migrations.sql`) and analysis views (`backend/sql/views.sql`).
+Nothing destructive runs — the migrations are `ADD COLUMN IF NOT EXISTS` and
+`CREATE OR REPLACE VIEW`, so startup against an existing database is safe.
 
 ### Verify
 
@@ -60,7 +79,7 @@ against the NUC. Nothing destructive runs — the migrations are
 curl http://localhost:8000/health
 # → {"status":"ok"}
 
-# Member count (sanity check we can read the existing data)
+# Member count (0 on a fresh database until you ingest)
 curl http://localhost:8000/api/members/ | python -c "import sys,json; print(len(json.load(sys.stdin)),'members')"
 
 # Open the UI
@@ -106,10 +125,11 @@ docker compose run --rm --no-deps \
 # Writes reports/report_runs<ids>_<YYYY-MM-DD>.html
 ```
 
-### v2 data-prep tools (only needed for a fresh database)
+### Starting from an empty database
 
-The NUC instance already has these populated. Re-run only if you're
-bootstrapping a new database or want to refresh from upstream sources.
+Run these once, in order, to populate a fresh instance. Ingest first
+(Admin panel, or `POST /api/scrape/daily`), then the join-key and
+enrichment backfills below.
 
 ```bash
 # Backfill the canonical bioguide_id join key on members (uses
@@ -207,6 +227,12 @@ CLAUDE.md               live project doc / architecture spec
 
 ## License
 
-Internal / personal-research repo. Not currently licensed for external
-use. Treat the data on the NUC as sensitive (it's public-source but
-joining it with personal modeling work isn't redistributable).
+MIT — see [LICENSE](LICENSE).
+
+The underlying disclosures are US government public records (House Clerk,
+Senate eFD, OGE). Price data is fetched at runtime from Yahoo Finance via
+`yfinance` and is **not** redistributed here; if you use it, that is between
+you and their terms. No database contents are committed to this repo.
+
+**This is research code, and its own conclusion is that the strategy it
+tests does not work.** Nothing here is investment advice.

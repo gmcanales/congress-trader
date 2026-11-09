@@ -148,12 +148,12 @@ populated; that's step 4 in the sequence below.
 
 ## 5. Memory pointers
 
-* [project-v2-leadership-plan](../../.claude/projects/.../memory/project_v2_leadership_plan.md)
+* `project-v2-leadership-plan` (Claude memory, not in this repo)
   — short-form record of this plan.
-* [reference-political-disclosure-sources](../../.claude/projects/.../memory/reference_political_disclosure_sources.md)
+* `reference-political-disclosure-sources` (Claude memory, not in this repo)
   — external data source pointers for legislators, judges, executive
   branch.
-* [project-modeling-plan](../../.claude/projects/.../memory/project_modeling_plan.md)
+* `project-modeling-plan` (Claude memory, not in this repo)
   — v1 plan and outcome.
 
 ## 6. Citations

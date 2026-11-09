@@ -88,7 +88,7 @@ All knobs are explicit arguments. The `analyze.py` CLI and
 `POST /api/model/run` endpoint expose them. Every run is persisted as an
 `AnalysisRun` row with full params, scores, and full_results for
 traceability — a **firm methodological commitment** from
-[`feedback_parameterized_analysis`](../.claude/projects/.../memory/feedback_parameterized_analysis.md).
+`feedback_parameterized_analysis` (Claude memory, not in this repo).
 
 ### 1.3 v1 result — null (`AnalysisRun #1`)
 
@@ -98,7 +98,7 @@ traceability — a **firm methodological commitment** from
 **Result.** No edge. In-sample grid winners went OOS-negative — the classic
 small-sample overfit-by-selection signature.
 
-**Memory record:** [`project_modeling_plan`](../.claude/projects/.../memory/project_modeling_plan.md)
+**Memory record:** `project_modeling_plan` (Claude memory, not in this repo)
 updated to note v1 was null.
 
 ---
@@ -120,7 +120,7 @@ because we want embedded interactive Plotly charts (sourced via CDN; reports
 are self-contained otherwise).
 
 **Naming convention** (commit `3b7aeaa`): `report_runs<ids>_<YYYY-MM-DD>.html`
-e.g. `report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-21.html`.
+e.g. `report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-22.html`.
 List of run IDs is explicit (not range-collapsed) for unambiguous audit
 trails.
 
@@ -857,7 +857,7 @@ shape as Congress PTRs (value brackets, 30/45-day rule, per-trade
 events).
 
 **Data access — what's actually online (correction to earlier memory).**
-The pre-work memory entry under [`reference_political_disclosure_sources`](../../.claude/projects/.../memory/reference_political_disclosure_sources.md)
+The pre-work memory entry under `reference_political_disclosure_sources` (Claude memory, not in this repo)
 claimed OGE 278-T data was "PDF only via Form 201 request." That was
 incomplete. The actual state as of 2026-05-23:
 
@@ -1669,7 +1669,7 @@ near the NUC.
   international populations.
 - [CLAUDE.md](../CLAUDE.md) — live status snapshot, current schema,
   running instructions.
-- [reports/report_runs1-…-18_2026-05-21.html](../reports/report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-21.html)
+- [reports/report_runs1-…-18_2026-05-21.html](../reports/report_runs1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-16-17-18_2026-05-22.html)
   — current canonical rendered findings.
 - Memory under `~/.claude/projects/.../memory/`:
   - `project_modeling_plan.md` — v1 conclusion summary
