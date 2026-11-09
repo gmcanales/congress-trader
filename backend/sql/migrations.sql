@@ -22,12 +22,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
--- Per-user portfolio scoping. Backfill existing rows to the sole user
--- before this change (gmcanales / owner@example.com), then lock the
--- column. Identity source is the verified CF Access JWT email — see
--- backend/app/auth.py.
+-- Per-user portfolio scoping. Identity source is the verified CF Access JWT
+-- email — see backend/app/auth.py.
+--
+-- The UPDATE is a one-time backfill: before this migration `user_holdings`
+-- was single-user and had no owner column, so pre-existing rows are assigned
+-- to a placeholder owner. On a fresh database the table is empty and this is
+-- a no-op. If you are migrating real single-user data, change the address
+-- below to the account that should inherit those rows.
 ALTER TABLE user_holdings ADD COLUMN IF NOT EXISTS user_email TEXT;
-UPDATE user_holdings SET user_email = 'owner@example.com' WHERE user_email IS NULL;
+UPDATE user_holdings SET user_email = 'legacy-owner@invalid' WHERE user_email IS NULL;
 ALTER TABLE user_holdings ALTER COLUMN user_email SET NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_user_holdings_user_email ON user_holdings(user_email);
 
